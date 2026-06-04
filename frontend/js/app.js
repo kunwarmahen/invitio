@@ -163,7 +163,7 @@
   function openEventModal(ev) {
     const editing = !!ev;
     const data = ev || { title: "", description: "", location: "", event_date: null, event_end: null,
-      host_display_name: me.name || "", theme: "violet", allow_plus_ones: true };
+      host_display_name: me.name || "", theme: "violet", image_fit: "cover", allow_plus_ones: true };
     const swatches = THEMES.map((t) =>
       `<div class="sw ${t === data.theme ? "sel" : ""}" data-theme-pick="${t}" style="background:${THEME_HEX[t]}"></div>`).join("");
 
@@ -185,6 +185,10 @@
         <div class="field"><label>Description</label>
           <textarea id="f-desc" placeholder="Tell your guests what to expect…">${esc(data.description)}</textarea></div>
         <div class="field"><label>Theme</label><div class="theme-pick" id="theme-pick">${swatches}</div></div>
+        <div class="field"><label style="display:flex;gap:8px;align-items:center;cursor:pointer">
+          <input type="checkbox" id="f-fit" style="width:auto" ${data.image_fit === "contain" ? "checked" : ""}>
+          Show the full image (don't crop it)</label>
+          <p class="g-sub" style="margin-top:4px">Off = fill the banner (cropped). On = show the whole image.</p></div>
         <div class="field"><label style="display:flex;gap:8px;align-items:center;cursor:pointer">
           <input type="checkbox" id="f-plus" style="width:auto" ${data.allow_plus_ones ? "checked" : ""}>
           Allow guests to bring +1s</label></div>
@@ -215,6 +219,7 @@
         location: $("#f-loc").value.trim(),
         description: $("#f-desc").value,
         theme,
+        image_fit: $("#f-fit").checked ? "contain" : "cover",
         allow_plus_ones: $("#f-plus").checked,
       };
       const btn = $("#ev-save"); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';

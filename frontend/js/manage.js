@@ -182,6 +182,8 @@
         <div class="field"><label>Description</label><textarea id="f-desc">${esc(e.description)}</textarea></div>
         <div class="field"><label>Theme</label><div class="theme-pick" id="theme-pick">${swatches}</div></div>
         <div class="field"><label style="display:flex;gap:8px;align-items:center;cursor:pointer">
+          <input type="checkbox" id="f-fit" style="width:auto" ${e.image_fit === "contain" ? "checked" : ""}> Show the full image (don't crop it)</label></div>
+        <div class="field"><label style="display:flex;gap:8px;align-items:center;cursor:pointer">
           <input type="checkbox" id="f-plus" style="width:auto" ${e.allow_plus_ones ? "checked" : ""}> Allow +1s</label></div>
         <div class="modal-foot">
           <button type="button" class="btn btn-line" data-close>Cancel</button>
@@ -207,6 +209,7 @@
           location: $("#f-loc").value.trim(),
           description: $("#f-desc").value,
           theme,
+          image_fit: $("#f-fit").checked ? "contain" : "cover",
           allow_plus_ones: $("#f-plus").checked,
         }});
         closeModal(); toast("Saved"); load();

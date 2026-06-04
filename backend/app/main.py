@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
 from app.config import settings
 from app.database import Base, engine
@@ -20,6 +21,22 @@ async def lifespan(app: FastAPI):
     os.makedirs(settings.upload_dir, exist_ok=True)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    # Idempotent column adds for events created before these fields existed.
+    # create_all() won't ALTER existing tables, so do it explicitly (matches the
+    # calorieapp migration style). Each is a no-op once the column is present.
+    event_column_migrations = [
+        ("event_end", "TIMESTAMP"),
+        ("host_email", "VARCHAR"),
+        ("manage_token", "VARCHAR"),
+        ("image_fit", "VARCHAR NOT NULL DEFAULT 'cover'"),
+    ]
+    for col, decl in event_column_migrations:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(f"ALTER TABLE events ADD COLUMN {col} {decl}"))
+            print(f"[MIGRATION] Added events.{col}")
+        except Exception:
+            pass  # column already exists
     print("=" * 56)
     print("  invitio API")
     print("=" * 56)

@@ -90,14 +90,25 @@
     const i = $("#ics"); if (i) i.addEventListener("click", downloadIcs);
   }
 
-  async function load() {
+  const SEEN_KEY = `invitio_opened_${token}`;
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  async function load(skipEnvelope = false) {
     try {
       const path = isInvite ? `/public/invite/${token}` : `/public/event/${token}`;
       const res = await fetch(`/api${path}`);
       if (!res.ok) throw new Error("This invitation link is invalid or has expired.");
       event = await res.json();
       document.body.setAttribute("data-theme", event.theme || "violet");
-      render();
+      // First visit this session → play the envelope reveal. Re-renders (e.g.
+      // "change my response") and reduced-motion users go straight to the card.
+      let alreadySeen = true;
+      try { alreadySeen = sessionStorage.getItem(SEEN_KEY) === "1"; } catch (_) {}
+      if (!skipEnvelope && !alreadySeen && !reducedMotion) {
+        showEnvelope();
+      } else {
+        render();
+      }
     } catch (err) {
       $("#rsvp-root").innerHTML = `<div class="invite-card"><div class="invite-body">
         <div class="confirm"><div class="big">🤔</div><h3>Hmm…</h3><p>${esc(err.message)}</p></div>
@@ -105,11 +116,68 @@
     }
   }
 
+  // ── envelope reveal ───────────────────────────────────────────────────────
+  function showEnvelope() {
+    const e = event;
+    $("#rsvp-root").innerHTML = `
+      <div class="env-stage" id="env-stage">
+        <div class="env-prompt">✦ You're invited <span class="tap">· tap to open</span></div>
+        <div class="envelope" id="envelope" role="button" tabindex="0" aria-label="Open invitation">
+          <div class="env-back"></div>
+          <div class="env-letter"><div class="el-in">
+            <div class="el-mark">✦</div>
+            <div class="el-host">${esc(e.host_display_name || "You're")} invites you to</div>
+            <div class="el-title">${esc(e.title)}</div>
+          </div></div>
+          <div class="env-pocket"></div>
+          <div class="env-flap"></div>
+          <div class="env-seal">✦</div>
+        </div>
+      </div>`;
+    const env = $("#envelope");
+    const open = () => openEnvelope();
+    env.addEventListener("click", open, { once: true });
+    env.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); open(); } });
+  }
+
+  function openEnvelope() {
+    try { sessionStorage.setItem(SEEN_KEY, "1"); } catch (_) {}
+    const env = $("#envelope");
+    const prompt = $(".env-prompt");
+    if (prompt) prompt.style.opacity = "0";
+    env.classList.add("opening");
+    // After the flap opens + letter rises, fly the envelope away and reveal.
+    setTimeout(() => env.classList.add("leaving"), 1150);
+    setTimeout(() => { render(); const card = $(".invite-card"); if (card) card.classList.add("reveal-in"); }, 1500);
+  }
+
+  function heroHTML(e) {
+    if (!e.image_path) return `<div class="invite-hero"><div class="ph">🎉</div></div>`;
+    const url = esc(e.image_path);
+    const hint = `<div class="zoom-hint">⤢ View full image</div>`;
+    if (e.image_fit === "contain") {
+      return `<div class="invite-hero contain zoomable" id="hero" style="--bgimg:url('${url}')">
+        <img class="hero-img" src="${url}" alt="${esc(e.title)}">${hint}</div>`;
+    }
+    return `<div class="invite-hero zoomable" id="hero" style="background-image:url('${url}')">${hint}</div>`;
+  }
+
+  function openLightbox() {
+    if (!event.image_path) return;
+    const lb = document.createElement("div");
+    lb.className = "lightbox";
+    lb.innerHTML = `<button class="lb-close" aria-label="Close">×</button><img src="${esc(event.image_path)}" alt="${esc(event.title)}">`;
+    const close = () => lb.remove();
+    lb.addEventListener("click", close);
+    document.body.appendChild(lb);
+    document.addEventListener("keydown", function esc2(ev) {
+      if (ev.key === "Escape") { close(); document.removeEventListener("keydown", esc2); }
+    });
+  }
+
   function render() {
     const e = event;
-    const hero = e.image_path
-      ? `<div class="invite-hero" style="background-image:url('${esc(e.image_path)}')"></div>`
-      : `<div class="invite-hero"><div class="ph">🎉</div></div>`;
+    const hero = heroHTML(e);
 
     const existing = e.existing_rsvp;
     const plusOne = e.allow_plus_ones;
@@ -164,6 +232,8 @@
 
     $("#rsvp-submit").addEventListener("click", submit);
     wireCalendar();
+    const heroEl = $("#hero");
+    if (heroEl && event.image_path) heroEl.addEventListener("click", openLightbox);
   }
 
   async function submit() {
@@ -213,7 +283,7 @@
       <button class="btn btn-line btn-sm" style="margin-top:18px" id="edit-again">Change my response</button>
     </div>`;
     if (status === "yes") wireCalendar();
-    $("#edit-again").addEventListener("click", load);
+    $("#edit-again").addEventListener("click", () => load(true));
   }
 
   load();

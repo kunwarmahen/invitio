@@ -43,6 +43,7 @@ def _public_event(event: Event, invite: Invite | None, existing: Rsvp | None) ->
         event_end=event.event_end,
         host_display_name=event.host_display_name,
         image_path=event.image_path,
+        image_fit=event.image_fit,
         theme=event.theme,
         allow_plus_ones=event.allow_plus_ones,
         public_token=event.public_token,

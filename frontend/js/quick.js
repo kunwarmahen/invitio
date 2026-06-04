@@ -34,6 +34,7 @@
       location: $("#f-loc").value.trim(),
       description: $("#f-desc").value,
       theme,
+      image_fit: $("#f-fit").checked ? "contain" : "cover",
       allow_plus_ones: $("#f-plus").checked,
       host_email: email || null,
     };

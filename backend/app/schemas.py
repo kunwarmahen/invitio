@@ -38,6 +38,7 @@ class EventCreate(BaseModel):
     event_end: datetime.datetime | None = None
     host_display_name: str = ""
     theme: str = "violet"
+    image_fit: str = Field(default="cover", pattern="^(cover|contain)$")
     allow_plus_ones: bool = True
 
 
@@ -49,6 +50,7 @@ class EventUpdate(BaseModel):
     event_end: datetime.datetime | None = None
     host_display_name: str | None = None
     theme: str | None = None
+    image_fit: str | None = Field(default=None, pattern="^(cover|contain)$")
     allow_plus_ones: bool | None = None
 
 
@@ -92,6 +94,7 @@ class EventOut(BaseModel):
     event_end: datetime.datetime | None
     host_display_name: str
     image_path: str | None
+    image_fit: str
     theme: str
     allow_plus_ones: bool
     public_token: str
@@ -151,6 +154,7 @@ class PublicEventOut(BaseModel):
     event_end: datetime.datetime | None
     host_display_name: str
     image_path: str | None
+    image_fit: str
     theme: str
     allow_plus_ones: bool
     public_token: str

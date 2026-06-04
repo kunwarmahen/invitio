@@ -213,6 +213,119 @@ textarea { resize: vertical; min-height: 84px; }
 .confirm h3 { font-size: 24px; margin: 10px 0 6px; }
 .confirm p { color: var(--muted); }
 
+/* ── invite hero: "contain" (show whole image over a blurred backdrop) ── */
+.invite-hero.contain { display: grid; place-items: center; overflow: hidden; }
+.invite-hero.contain::before {
+    content: ""; position: absolute; inset: -20px;
+    background: var(--bgimg) center/cover no-repeat; filter: blur(26px) brightness(.8);
+    transform: scale(1.1);
+}
+.invite-hero.contain .hero-img {
+    position: relative; max-width: 100%; max-height: 100%;
+    width: auto; height: auto; object-fit: contain; display: block;
+    filter: drop-shadow(0 8px 24px rgba(0,0,0,.35));
+}
+.invite-hero.zoomable { cursor: zoom-in; }
+.invite-hero .zoom-hint {
+    position: absolute; right: 12px; bottom: 12px; z-index: 2;
+    background: rgba(0,0,0,.55); color: #fff; font-size: 12px; font-weight: 600;
+    padding: 5px 10px; border-radius: 999px; backdrop-filter: blur(4px);
+}
+
+/* ── full-image lightbox ── */
+.lightbox {
+    position: fixed; inset: 0; z-index: 200; display: grid; place-items: center;
+    background: rgba(8,5,20,.92); padding: 20px; cursor: zoom-out;
+    animation: fadein .2s ease;
+}
+.lightbox img { max-width: 100%; max-height: 92dvh; border-radius: 10px; box-shadow: var(--shadow); }
+.lightbox .lb-close {
+    position: absolute; top: 16px; right: 18px; width: 42px; height: 42px;
+    border: none; border-radius: 50%; background: rgba(255,255,255,.15); color: #fff;
+    font-size: 24px; cursor: pointer; line-height: 1;
+}
+@keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+
+/* ════ Envelope reveal ════════════════════════════════════════════════════ */
+.env-stage {
+    min-height: 78dvh; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 26px; perspective: 1400px; user-select: none;
+}
+.env-prompt {
+    font-weight: 700; color: var(--accent-ink); letter-spacing: .02em;
+    display: flex; align-items: center; gap: 8px;
+    animation: bob 1.8s ease-in-out infinite;
+}
+.env-prompt .tap { font-size: 13px; color: var(--muted); font-weight: 600; }
+@keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+
+.envelope {
+    position: relative; width: min(380px, 84vw); aspect-ratio: 3 / 2;
+    cursor: pointer; transform-style: preserve-3d;
+    transition: transform .6s ease, opacity .5s ease;
+}
+.envelope * { position: absolute; }
+/* back wall of the envelope */
+.env-back {
+    inset: 0; border-radius: 12px;
+    background: linear-gradient(160deg, var(--accent), var(--accent-ink));
+    box-shadow: var(--shadow);
+}
+/* the letter/card that rises out */
+.env-letter {
+    left: 6%; top: 6%; width: 88%; height: 92%; z-index: 2;
+    background: #fff; border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.2);
+    display: grid; place-items: center; text-align: center; color: var(--ink);
+    transition: transform .8s cubic-bezier(.5,0,.2,1) .35s;
+}
+.env-letter .el-in { padding: 14px; }
+.env-letter .el-mark {
+    width: 46px; height: 46px; margin: 0 auto 8px; border-radius: 14px;
+    display: grid; place-items: center; font-size: 22px; color: #fff;
+    background: linear-gradient(135deg, var(--accent), var(--accent-ink));
+}
+.env-letter .el-host { font-size: 13px; color: var(--muted); }
+.env-letter .el-title { font-weight: 800; font-size: 18px; margin-top: 2px; }
+/* front pocket (V-notch top so the letter reads as tucked inside) */
+.env-pocket {
+    inset: 0; z-index: 3; border-radius: 12px;
+    background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 88%, #fff), var(--accent-ink));
+    clip-path: polygon(0 22%, 50% 60%, 100% 22%, 100% 100%, 0 100%);
+    box-shadow: inset 0 -8px 18px rgba(0,0,0,.12);
+}
+/* top flap that opens */
+.env-flap {
+    top: 0; left: 0; width: 100%; height: 62%; z-index: 5; transform-origin: top center;
+    background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 75%, #000), var(--accent-ink));
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+    transition: transform .7s ease, z-index 0s linear .35s;
+    backface-visibility: hidden;
+}
+.env-seal {
+    top: 46%; left: 50%; transform: translate(-50%,-50%); z-index: 6;
+    width: 38px; height: 38px; border-radius: 50%; background: #fff;
+    display: grid; place-items: center; color: var(--accent); font-size: 18px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.25); transition: opacity .3s ease;
+}
+/* opening sequence */
+.envelope.opening { cursor: default; }
+.envelope.opening .env-seal { opacity: 0; }
+.envelope.opening .env-flap { transform: rotateX(-180deg); z-index: 1; }
+.envelope.opening .env-letter { transform: translateY(-78%) scale(1.02); z-index: 4; }
+.envelope.leaving { transform: translateY(20px) scale(.6); opacity: 0; }
+
+/* the real invite card fading/scaling in after the envelope */
+.reveal-in { animation: revealIn .55s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes revealIn {
+    from { opacity: 0; transform: translateY(24px) scale(.97); }
+    to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .envelope, .env-letter, .env-flap, .env-prompt { transition: none !important; animation: none !important; }
+    .reveal-in { animation: none; }
+}
+
 /* ── toast ── */
 #toast {
     position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%) translateY(120px);

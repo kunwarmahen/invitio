@@ -47,6 +47,7 @@ async def create_event(body: EventCreate, user: User = Depends(get_current_user)
         host_display_name=(body.host_display_name or user.name).strip(),
         host_email=user.email,
         theme=body.theme,
+        image_fit=body.image_fit,
         allow_plus_ones=body.allow_plus_ones,
         public_token=new_token(),
     )

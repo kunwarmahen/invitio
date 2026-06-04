@@ -57,6 +57,7 @@ async def quick_create(body: QuickCreate, db: AsyncSession = Depends(get_db)):
         host_display_name=body.host_display_name.strip(),
         host_email=host_email,
         theme=body.theme,
+        image_fit=body.image_fit,
         allow_plus_ones=body.allow_plus_ones,
         public_token=new_token(),
         manage_token=new_token(24),

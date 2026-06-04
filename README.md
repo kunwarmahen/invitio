@@ -17,7 +17,11 @@ reverse proxy.
   get a secret manage link (`/m/<token>`, optionally emailed to you) that
   administers the event without logging in.
 - **Create events** — title, start/end date/time, location, description, host
-  name, theme, and a **custom uploaded hero image**.
+  name, theme, and a **custom uploaded hero image** (choose crop-to-fill or
+  **show the whole image** uncropped over a blurred backdrop).
+- **Envelope reveal** — guests land on a sealed, themed envelope that opens and
+  slides the invitation out (plays once per visit; honours reduced-motion).
+- **Tap to zoom** — guests can open the invite image full-screen.
 - **Invite by email** — each guest gets a unique tokenized RSVP link (emailed
   via Gmail when configured).
 - **Share a link** — one public link anyone can open and RSVP through.
