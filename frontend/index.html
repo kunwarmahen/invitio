@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>invitio — beautiful invitations</title>
+    <meta name="description" content="Create event invitations with your own images and collect RSVPs.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css?v=1">
+</head>
+<body>
+
+<!-- ── Auth ── -->
+<div id="auth-screen" class="auth-wrap">
+    <div class="auth-card">
+        <div class="brand"><span class="dot">✦</span> invitio</div>
+        <h1 id="auth-title">Welcome back</h1>
+        <p class="sub" id="auth-sub">Sign in to manage your invitations.</p>
+
+        <form id="auth-form">
+            <div class="field" id="name-field" style="display:none">
+                <label>Your name</label>
+                <input id="auth-name" type="text" autocomplete="name" placeholder="Alex Rivera">
+            </div>
+            <div class="field">
+                <label>Email</label>
+                <input id="auth-email" type="email" autocomplete="email" required placeholder="you@example.com">
+            </div>
+            <div class="field">
+                <label>Password</label>
+                <input id="auth-password" type="password" autocomplete="current-password" required placeholder="••••••••">
+            </div>
+            <button class="btn btn-primary" style="width:100%" id="auth-submit" type="submit">Sign in</button>
+        </form>
+        <p class="auth-toggle" id="auth-toggle"></p>
+        <div style="border-top:1px solid var(--line);margin-top:22px;padding-top:18px;text-align:center">
+            <p class="sub" style="margin-bottom:12px">In a hurry?</p>
+            <a class="btn btn-line btn-sm" href="/quick" style="text-decoration:none">⚡ Create one event without an account</a>
+        </div>
+    </div>
+</div>
+
+<!-- ── App ── -->
+<div id="app-screen" class="hidden">
+    <div class="topbar">
+        <div class="topbar-inner">
+            <div class="brand"><span class="dot">✦</span> invitio</div>
+            <div class="who">
+                <span id="who-name"></span>
+                <div class="avatar" id="who-avatar">?</div>
+                <button class="btn btn-line btn-sm" id="logout-btn">Log out</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- list view -->
+    <div class="container" id="list-view">
+        <div class="page-head">
+            <h2>Your events</h2>
+            <button class="btn btn-primary" id="new-event-btn">＋ New event</button>
+        </div>
+        <div id="events-grid" class="grid"></div>
+    </div>
+
+    <!-- detail view -->
+    <div class="container hidden" id="detail-view">
+        <button class="btn btn-line btn-sm" id="back-btn" style="margin-bottom:18px">← All events</button>
+        <div id="detail-content"></div>
+    </div>
+</div>
+
+<!-- modal mount -->
+<div id="modal-root"></div>
+<div id="toast"></div>
+
+<input type="file" id="hidden-file" accept="image/*" class="hidden">
+
+<script src="/static/js/app.js?v=1"></script>
+</body>
+</html>

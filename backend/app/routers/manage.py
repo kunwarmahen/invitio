@@ -1,0 +1,127 @@
+"""No-account event flow.
+
+`POST /api/public/events` creates an event without a login and returns a secret
+``manage_token``. Everything under `/api/public/manage/{token}` then administers
+that event by presenting the token instead of a JWT — the same operations the
+authenticated host router offers.
+"""
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app import event_service
+from app.auth import new_token
+from app.config import settings
+from app.database import get_db
+from app.email_service import email_configured, send_manage_link_email
+from app.models import Event
+from app.schemas import (
+    AddInvitesRequest,
+    AddInvitesResult,
+    EventDetail,
+    EventOut,
+    EventSummary,
+    EventUpdate,
+    InviteOut,
+    QuickCreate,
+    QuickCreateResult,
+)
+
+router = APIRouter(prefix="/api/public", tags=["public"])
+
+
+async def _load_managed(token: str, db: AsyncSession) -> Event:
+    event = (
+        await db.execute(
+            select(Event)
+            .where(Event.manage_token == token)
+            .options(selectinload(Event.invites), selectinload(Event.rsvps))
+        )
+    ).scalar_one_or_none()
+    if not event:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found or link expired")
+    return event
+
+
+@router.post("/events", response_model=QuickCreateResult, status_code=status.HTTP_201_CREATED)
+async def quick_create(body: QuickCreate, db: AsyncSession = Depends(get_db)):
+    host_email = str(body.host_email).lower().strip() if body.host_email else None
+    event = Event(
+        host_id=None,
+        title=body.title.strip(),
+        description=body.description,
+        location=body.location,
+        event_date=body.event_date,
+        event_end=body.event_end,
+        host_display_name=body.host_display_name.strip(),
+        host_email=host_email,
+        theme=body.theme,
+        allow_plus_ones=body.allow_plus_ones,
+        public_token=new_token(),
+        manage_token=new_token(24),
+    )
+    db.add(event)
+    await db.commit()
+    await db.refresh(event)
+
+    manage_url = f"{settings.public_base_url}/m/{event.manage_token}"
+    share_url = f"{settings.public_base_url}/e/{event.public_token}"
+
+    emailed = False
+    if host_email and email_configured():
+        try:
+            emailed = await send_manage_link_email(host_email, event.title, manage_url, share_url)
+        except Exception as exc:
+            if settings.debug:
+                print(f"[EMAIL] manage link to {host_email} failed: {exc}")
+
+    return QuickCreateResult(
+        event=EventOut.model_validate(event),
+        manage_token=event.manage_token,
+        manage_url=manage_url,
+        share_url=share_url,
+        emailed=emailed,
+    )
+
+
+@router.get("/manage/{token}", response_model=EventDetail)
+async def manage_get(token: str, db: AsyncSession = Depends(get_db)):
+    return EventDetail.model_validate(await _load_managed(token, db))
+
+
+@router.put("/manage/{token}", response_model=EventOut)
+async def manage_update(token: str, body: EventUpdate, db: AsyncSession = Depends(get_db)):
+    event = await _load_managed(token, db)
+    event_service.apply_update(event, body)
+    await db.commit()
+    await db.refresh(event)
+    return EventOut.model_validate(event)
+
+
+@router.delete("/manage/{token}", status_code=status.HTTP_204_NO_CONTENT)
+async def manage_delete(token: str, db: AsyncSession = Depends(get_db)):
+    await event_service.delete_event(await _load_managed(token, db), db)
+
+
+@router.post("/manage/{token}/image", response_model=EventOut)
+async def manage_image(token: str, file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
+    event = await _load_managed(token, db)
+    await event_service.save_image(event, file, db)
+    return EventOut.model_validate(event)
+
+
+@router.post("/manage/{token}/invites", response_model=AddInvitesResult)
+async def manage_invites(token: str, body: AddInvitesRequest, db: AsyncSession = Depends(get_db)):
+    event = await _load_managed(token, db)
+    added, emailed = await event_service.add_invites(event, body, db)
+    return AddInvitesResult(
+        added=[InviteOut.model_validate(i) for i in added],
+        emailed=emailed,
+        email_enabled=email_configured(),
+    )
+
+
+@router.get("/manage/{token}/summary", response_model=EventSummary)
+async def manage_summary(token: str, db: AsyncSession = Depends(get_db)):
+    return event_service.summarize(await _load_managed(token, db))

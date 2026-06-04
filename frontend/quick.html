@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create an event — invitio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css?v=1">
+</head>
+<body class="rsvp-page">
+    <div class="rsvp-shell" style="max-width:560px">
+        <div class="invite-card">
+            <div class="invite-body">
+                <div class="brand" style="margin-bottom:6px"><span class="dot">✦</span> invitio</div>
+                <h1 style="font-size:26px;margin:8px 0 4px">Create your event</h1>
+                <p class="sub" style="color:var(--muted);margin-bottom:22px">No account needed. You'll get a private link to manage it and a shareable link for guests.</p>
+
+                <form id="quick-form">
+                    <div class="field"><label>Event title *</label>
+                        <input id="f-title" required placeholder="Summer Rooftop Party"></div>
+                    <div class="field"><label>Your name (host)</label>
+                        <input id="f-host" placeholder="Alex Rivera"></div>
+                    <div class="row">
+                        <div class="field"><label>Starts</label><input id="f-date" type="datetime-local"></div>
+                        <div class="field"><label>Ends (optional)</label><input id="f-end" type="datetime-local"></div>
+                    </div>
+                    <div class="field"><label>Location</label><input id="f-loc" placeholder="123 Main St"></div>
+                    <div class="field"><label>Description</label>
+                        <textarea id="f-desc" placeholder="Tell guests what to expect…"></textarea></div>
+                    <div class="field"><label>Theme</label><div class="theme-pick" id="theme-pick"></div></div>
+                    <div class="field"><label>Your email (optional — we'll email you the manage link)</label>
+                        <input id="f-email" type="email" placeholder="you@example.com"></div>
+                    <label style="display:flex;gap:8px;align-items:center;cursor:pointer;margin-bottom:18px">
+                        <input type="checkbox" id="f-plus" checked style="width:auto"> Allow guests to bring +1s</label>
+                    <button class="btn btn-primary" id="submit" type="submit" style="width:100%;font-size:16px;padding:15px">Create event</button>
+                </form>
+                <p style="text-align:center;margin-top:16px;font-size:14px"><a href="/">← Back to sign in</a></p>
+            </div>
+        </div>
+    </div>
+    <div id="toast"></div>
+    <script src="/static/js/quick.js?v=1"></script>
+</body>
+</html>

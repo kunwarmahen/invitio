@@ -1,0 +1,56 @@
+# ─── Python ───────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ─── Virtual environments ─────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ─── Secrets & config ─────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ─── Database ─────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+invitio.db
+test.db
+data/
+postgres-data/
+
+# ─── Runtime data (bind-mounted on the NAS) ───────────────────
+uploads/
+temp_upload.tmp
+server.log
+*.log
+
+# ─── TLS / certs ──────────────────────────────────────────────
+certs/
+mkcert/
+*.pem
+
+# ─── Local-only planning docs (not shipped, like calorieapp) ──
+local_docs/
+
+# ─── Editors / OS ─────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ─── Deploy artifacts ─────────────────────────────────────────
+*.tar.gz

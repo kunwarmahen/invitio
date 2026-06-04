@@ -1,0 +1,24 @@
+# Local development — SQLite + HTTP on :8080. Zero external services.
+#
+#   ./deploy.sh local up      (or:  docker compose up --build)
+#
+# Visit http://localhost:8080
+
+services:
+  app:
+    build: .
+    image: invitio:latest
+    env_file:
+      - .env
+    environment:
+      - DATABASE_PROVIDER=sqlite
+      - DATABASE_URL=sqlite+aiosqlite:////app/data/invitio.db
+      - UPLOAD_DIR=/app/uploads
+      - PUBLIC_BASE_URL=http://localhost:8080
+      - ALLOWED_ORIGINS=["http://localhost:8080"]
+    ports:
+      - "8080:8000"
+    volumes:
+      - ./data:/app/data        # SQLite db persists across restarts
+      - ./uploads:/app/uploads  # uploaded invite images persist
+    restart: unless-stopped
