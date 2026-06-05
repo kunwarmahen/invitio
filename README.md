@@ -17,10 +17,11 @@ reverse proxy.
   get a secret manage link (`/m/<token>`, optionally emailed to you) that
   administers the event without logging in.
 - **Create events** — title, start/end date/time, location, description, host
-  name, theme, and a **custom uploaded hero image** (choose crop-to-fill or
-  **show the whole image** uncropped over a blurred backdrop).
-- **Envelope reveal** — guests land on a sealed, themed envelope that opens and
-  slides the invitation out (plays once per visit; honours reduced-motion).
+  name, theme, and a **custom uploaded hero image**, shown **whole/uncropped by
+  default** (over a blurred backdrop); a toggle switches to crop-to-fill.
+- **Punchbowl-style envelope reveal** — guests land on a sealed, themed envelope
+  that opens and slides *your invitation image* out, then shows the full invite
+  (plays once per visit; honours reduced-motion).
 - **Tap to zoom** — guests can open the invite image full-screen.
 - **Invite by email** — each guest gets a unique tokenized RSVP link (emailed
   via Gmail when configured).
@@ -59,6 +60,13 @@ PYTHONPATH=backend uvicorn app.main:app --reload --port 8080
 
 > Emailing invites is optional. Without `GMAIL_APP_PASSWORD` set, the app still
 > creates events and links — you just copy and share them yourself.
+
+### Asset cache-busting
+
+`deploy.sh` bakes a `BUILD_VERSION` (git sha + timestamp) into the image and the
+backend stamps it into each page's `?v=` query, so every deploy invalidates the
+CSS/JS automatically — no hard-refresh needed. In plain `uvicorn` dev the build
+id falls back to the process start time, so each restart re-stamps too.
 
 ## Deploy to the NAS
 

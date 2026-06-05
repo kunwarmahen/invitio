@@ -6,7 +6,10 @@
 
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        BUILD_VERSION: ${BUILD_VERSION:-}
     image: invitio:latest
     env_file:
       - .env

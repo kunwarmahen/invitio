@@ -45,9 +45,9 @@ class Event(Base):
     host_display_name: Mapped[str] = mapped_column(String, default="")
     host_email: Mapped[str | None] = mapped_column(String, nullable=True)
     image_path: Mapped[str | None] = mapped_column(String, nullable=True)
-    # How the invite image is displayed: "cover" crops to fill the hero,
-    # "contain" shows the whole image (letterboxed over a blurred backdrop).
-    image_fit: Mapped[str] = mapped_column(String, default="cover")
+    # How the invite image is displayed: "contain" (default) shows the whole
+    # image over a blurred backdrop; "cover" crops it to fill the hero.
+    image_fit: Mapped[str] = mapped_column(String, default="contain")
     theme: Mapped[str] = mapped_column(String, default="violet")
     allow_plus_ones: Mapped[bool] = mapped_column(Boolean, default=True)
 

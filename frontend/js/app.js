@@ -163,7 +163,7 @@
   function openEventModal(ev) {
     const editing = !!ev;
     const data = ev || { title: "", description: "", location: "", event_date: null, event_end: null,
-      host_display_name: me.name || "", theme: "violet", image_fit: "cover", allow_plus_ones: true };
+      host_display_name: me.name || "", theme: "violet", image_fit: "contain", allow_plus_ones: true };
     const swatches = THEMES.map((t) =>
       `<div class="sw ${t === data.theme ? "sel" : ""}" data-theme-pick="${t}" style="background:${THEME_HEX[t]}"></div>`).join("");
 

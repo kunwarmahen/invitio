@@ -213,17 +213,23 @@ textarea { resize: vertical; min-height: 84px; }
 .confirm h3 { font-size: 24px; margin: 10px 0 6px; }
 .confirm p { color: var(--muted); }
 
-/* ── invite hero: "contain" (show whole image over a blurred backdrop) ── */
-.invite-hero.contain { display: grid; place-items: center; overflow: hidden; }
+/* ── invite hero: "contain" (show the WHOLE image, uncropped) ──
+   The whole image is shown at its natural aspect ratio but height-capped so a
+   tall portrait invite stays a reasonable size; the side gutters are filled
+   with a soft blurred copy of the image so it reads as intentional. */
+.invite-hero.contain {
+    height: auto; min-height: 200px; max-height: 60vh; overflow: hidden;
+    display: grid; place-items: center; position: relative; background: #f4f1fb;
+}
 .invite-hero.contain::before {
-    content: ""; position: absolute; inset: -20px;
-    background: var(--bgimg) center/cover no-repeat; filter: blur(26px) brightness(.8);
-    transform: scale(1.1);
+    content: ""; position: absolute; inset: 0;
+    background: var(--bgimg) center/cover no-repeat;
+    filter: blur(30px) brightness(.7); transform: scale(1.15);
 }
 .invite-hero.contain .hero-img {
-    position: relative; max-width: 100%; max-height: 100%;
-    width: auto; height: auto; object-fit: contain; display: block;
-    filter: drop-shadow(0 8px 24px rgba(0,0,0,.35));
+    position: relative; max-width: 92%; max-height: 60vh;
+    width: auto; height: auto; display: block; border-radius: 4px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.32);
 }
 .invite-hero.zoomable { cursor: zoom-in; }
 .invite-hero .zoom-hint {
@@ -264,45 +270,56 @@ textarea { resize: vertical; min-height: 84px; }
     cursor: pointer; transform-style: preserve-3d;
     transition: transform .6s ease, opacity .5s ease;
 }
-.envelope * { position: absolute; }
+/* only the envelope's own layers are stacked; letter contents flow normally */
+.envelope > * { position: absolute; }
 /* back wall of the envelope */
 .env-back {
     inset: 0; border-radius: 12px;
     background: linear-gradient(160deg, var(--accent), var(--accent-ink));
     box-shadow: var(--shadow);
 }
-/* the letter/card that rises out */
+/* the letter/card that rises out — the host's photo, like the real invite */
 .env-letter {
-    left: 6%; top: 6%; width: 88%; height: 92%; z-index: 2;
-    background: #fff; border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.2);
-    display: grid; place-items: center; text-align: center; color: var(--ink);
-    transition: transform .8s cubic-bezier(.5,0,.2,1) .35s;
+    left: 6%; top: 9%; width: 88%; height: 84%; z-index: 2;
+    background: #fff; border-radius: 10px; box-shadow: 0 8px 22px rgba(0,0,0,.22);
+    overflow: hidden; text-align: center; color: var(--ink);
+    transition: transform .85s cubic-bezier(.5,0,.2,1) .35s, box-shadow .4s ease;
 }
-.env-letter .el-in { padding: 14px; }
+/* photo variant: full-bleed image with the title on a gradient scrim */
+.env-letter .el-photo { position: absolute; inset: 0; background: center/cover no-repeat var(--accent-soft); }
+.env-letter .el-overlay {
+    position: absolute; left: 0; right: 0; bottom: 0; padding: 22px 12px 10px;
+    background: linear-gradient(transparent, rgba(0,0,0,.66)); color: #fff;
+}
+.env-letter .el-overlay .el-title { font-weight: 800; font-size: 15px; line-height: 1.2; }
+.env-letter .el-overlay .el-host { font-size: 11px; opacity: .85; }
+/* text variant (no image) */
+.env-letter .el-text { position: absolute; inset: 0; display: grid; place-content: center; padding: 16px; }
 .env-letter .el-mark {
     width: 46px; height: 46px; margin: 0 auto 8px; border-radius: 14px;
     display: grid; place-items: center; font-size: 22px; color: #fff;
     background: linear-gradient(135deg, var(--accent), var(--accent-ink));
 }
-.env-letter .el-host { font-size: 13px; color: var(--muted); }
-.env-letter .el-title { font-weight: 800; font-size: 18px; margin-top: 2px; }
-/* front pocket (V-notch top so the letter reads as tucked inside) */
+.env-letter .el-text .el-host { font-size: 12px; color: var(--muted); }
+.env-letter .el-text .el-title { font-weight: 800; font-size: 16px; line-height: 1.2; }
+/* front pocket — covers the whole front except a top-center triangle (the flap
+   seam), so the letter behind is fully hidden until the flap opens */
 .env-pocket {
     inset: 0; z-index: 3; border-radius: 12px;
     background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 88%, #fff), var(--accent-ink));
-    clip-path: polygon(0 22%, 50% 60%, 100% 22%, 100% 100%, 0 100%);
+    clip-path: polygon(0 0, 50% 50%, 100% 0, 100% 100%, 0 100%);
     box-shadow: inset 0 -8px 18px rgba(0,0,0,.12);
 }
-/* top flap that opens */
+/* top flap that opens — fills exactly that top-center triangle when closed */
 .env-flap {
-    top: 0; left: 0; width: 100%; height: 62%; z-index: 5; transform-origin: top center;
+    top: 0; left: 0; width: 100%; height: 50%; z-index: 5; transform-origin: top center;
     background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 75%, #000), var(--accent-ink));
     clip-path: polygon(0 0, 100% 0, 50% 100%);
     transition: transform .7s ease, z-index 0s linear .35s;
     backface-visibility: hidden;
 }
 .env-seal {
-    top: 46%; left: 50%; transform: translate(-50%,-50%); z-index: 6;
+    top: 42%; left: 50%; transform: translate(-50%,-50%); z-index: 6;
     width: 38px; height: 38px; border-radius: 50%; background: #fff;
     display: grid; place-items: center; color: var(--accent); font-size: 18px;
     box-shadow: 0 2px 8px rgba(0,0,0,.25); transition: opacity .3s ease;

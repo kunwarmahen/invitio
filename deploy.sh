@@ -42,6 +42,15 @@ IMAGE_NAME="invitio"
 IMAGE_TAG="latest"
 IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
 
+# Cache-busting build id baked into the image (git short-sha + build time). The
+# backend stamps it into each page's ?v=, so every build invalidates the
+# versioned css/js while plain container restarts of the same image don't. The
+# timestamp also covers rebuilds of uncommitted changes.
+build_version() {
+    local sha; sha="$(git rev-parse --short HEAD 2>/dev/null || echo nogit)"
+    echo "${sha}-$(date +%s)"
+}
+
 NAS_HOST="${NAS_HOST:-}"
 NAS_USER="${NAS_USER:-$(whoami)}"
 NAS_PATH="${NAS_PATH:-invitio}"          # relative = home dir on NAS
@@ -109,8 +118,9 @@ check_env() { [ -f .env ] || die ".env not found. Run: cp .env.example .env  the
 local_build() {
     banner "Local build"
     local rt; rt=$(detect_runtime)
-    info "Runtime: $rt — building ${IMAGE} …"
-    $rt build -t "$IMAGE" .
+    local bv; bv=$(build_version)
+    info "Runtime: $rt — building ${IMAGE} (BUILD_VERSION=${bv}) …"
+    $rt build --build-arg BUILD_VERSION="$bv" -t "$IMAGE" .
     ok "Image built: ${IMAGE}"
 }
 
@@ -118,7 +128,9 @@ local_up() {
     banner "Local up ($COMPOSE_LOCAL)"
     [ -f .env ] || { warn ".env not found — copying from .env.example"; cp .env.example .env; }
     local rt; rt=$(detect_runtime); local compose; compose=$(detect_compose "$rt")
-    info "Runtime: $rt  |  Compose: $compose"
+    # Compose reads BUILD_VERSION from the environment (build.args in the file).
+    BUILD_VERSION="$(build_version)"; export BUILD_VERSION
+    info "Runtime: $rt  |  Compose: $compose  |  BUILD_VERSION=${BUILD_VERSION}"
     $compose -f "$COMPOSE_LOCAL" up --build -d
     echo ""; ok "invitio is up → http://localhost:8080"
     info "Logs: ./deploy.sh local logs   |   Stop: ./deploy.sh local down"
@@ -159,8 +171,9 @@ nas_deploy() {
     trap nas_ssh_close EXIT
 
     local rt; rt=$(detect_runtime)
-    info "Building image ${IMAGE} locally (runtime: $rt) …"
-    $rt build -t "$IMAGE" .
+    local bv; bv=$(build_version)
+    info "Building image ${IMAGE} locally (runtime: $rt, BUILD_VERSION=${bv}) …"
+    $rt build --build-arg BUILD_VERSION="$bv" -t "$IMAGE" .
 
     local tarfile="/tmp/${IMAGE_NAME}.tar.gz"
     info "Exporting image → ${tarfile}"

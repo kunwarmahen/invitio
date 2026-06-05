@@ -38,7 +38,7 @@ class EventCreate(BaseModel):
     event_end: datetime.datetime | None = None
     host_display_name: str = ""
     theme: str = "violet"
-    image_fit: str = Field(default="cover", pattern="^(cover|contain)$")
+    image_fit: str = Field(default="contain", pattern="^(cover|contain)$")
     allow_plus_ones: bool = True
 
 

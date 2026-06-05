@@ -1,10 +1,12 @@
 import os
+import re
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
@@ -15,10 +17,26 @@ from app.routers import auth, events, manage, rsvp
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
 
+# Cache-busting build id, stamped into each page's ?v= query at startup. Baked
+# at image-build time via BUILD_VERSION (a git sha + timestamp from deploy.sh)
+# so a mere container restart doesn't churn caches; falls back to the process
+# start time when unset (local dev), so every `uvicorn` restart busts assets.
+BUILD_VERSION = re.sub(r"[^\w.-]", "", os.getenv("BUILD_VERSION") or str(int(time.time())))
+_PAGE_FILES = ["index.html", "rsvp.html", "quick.html", "manage.html"]
+_pages: dict[str, str] = {}
+
+
+def _load_pages() -> None:
+    for name in _PAGE_FILES:
+        path = FRONTEND_DIR / name
+        if path.exists():
+            _pages[name] = re.sub(r"\?v=[\w.-]+", f"?v={BUILD_VERSION}", path.read_text())
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     os.makedirs(settings.upload_dir, exist_ok=True)
+    _load_pages()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     # Idempotent column adds for events created before these fields existed.
@@ -28,7 +46,7 @@ async def lifespan(app: FastAPI):
         ("event_end", "TIMESTAMP"),
         ("host_email", "VARCHAR"),
         ("manage_token", "VARCHAR"),
-        ("image_fit", "VARCHAR NOT NULL DEFAULT 'cover'"),
+        ("image_fit", "VARCHAR NOT NULL DEFAULT 'contain'"),
     ]
     for col, decl in event_column_migrations:
         try:
@@ -46,6 +64,7 @@ async def lifespan(app: FastAPI):
     print(f"  Upload dir:   {settings.upload_dir}")
     print(f"  Public URL:   {settings.public_base_url}")
     print(f"  Email:        {'configured' if settings.gmail_app_password else 'disabled (links only)'}")
+    print(f"  Build:        {BUILD_VERSION}")
     print("=" * 56)
     yield
     print("[SHUTDOWN] invitio shutting down")
@@ -76,7 +95,12 @@ _NO_CACHE = {"Cache-Control": "no-cache"}
 
 
 def _page(name: str) -> HTMLResponse:
-    return HTMLResponse(content=(FRONTEND_DIR / name).read_text(), headers=_NO_CACHE)
+    # Served no-cache (the page carries the build-stamped ?v=), so a new deploy
+    # is picked up immediately and in turn busts the versioned css/js URLs.
+    html = _pages.get(name)
+    if html is None:  # not preloaded (e.g. reload edge case) — read on demand
+        html = re.sub(r"\?v=[\w.-]+", f"?v={BUILD_VERSION}", (FRONTEND_DIR / name).read_text())
+    return HTMLResponse(content=html, headers=_NO_CACHE)
 
 
 @app.get("/")

@@ -119,16 +119,23 @@
   // ── envelope reveal ───────────────────────────────────────────────────────
   function showEnvelope() {
     const e = event;
+    // The "letter" that rises out is a mini of the real invitation: the host's
+    // own image (Punchbowl-style) when there is one, else a typeset card.
+    const letterInner = e.image_path
+      ? `<div class="el-photo" style="background-image:url('${esc(e.image_path)}')"></div>
+         <div class="el-overlay"><div class="el-title">${esc(e.title)}</div>
+           <div class="el-host">${esc(e.host_display_name ? e.host_display_name + " invites you" : "You're invited")}</div></div>`
+      : `<div class="el-text">
+           <div class="el-mark">✦</div>
+           <div class="el-host">${esc(e.host_display_name || "You're")} invites you to</div>
+           <div class="el-title">${esc(e.title)}</div>
+         </div>`;
     $("#rsvp-root").innerHTML = `
       <div class="env-stage" id="env-stage">
         <div class="env-prompt">✦ You're invited <span class="tap">· tap to open</span></div>
-        <div class="envelope" id="envelope" role="button" tabindex="0" aria-label="Open invitation">
+        <div class="envelope${e.image_path ? " has-photo" : ""}" id="envelope" role="button" tabindex="0" aria-label="Open invitation">
           <div class="env-back"></div>
-          <div class="env-letter"><div class="el-in">
-            <div class="el-mark">✦</div>
-            <div class="el-host">${esc(e.host_display_name || "You're")} invites you to</div>
-            <div class="el-title">${esc(e.title)}</div>
-          </div></div>
+          <div class="env-letter">${letterInner}</div>
           <div class="env-pocket"></div>
           <div class="env-flap"></div>
           <div class="env-seal">✦</div>
@@ -154,12 +161,14 @@
   function heroHTML(e) {
     if (!e.image_path) return `<div class="invite-hero"><div class="ph">🎉</div></div>`;
     const url = esc(e.image_path);
-    const hint = `<div class="zoom-hint">⤢ View full image</div>`;
     if (e.image_fit === "contain") {
+      // Whole image, height-capped over a blurred backdrop; tap to enlarge.
       return `<div class="invite-hero contain zoomable" id="hero" style="--bgimg:url('${url}')">
-        <img class="hero-img" src="${url}" alt="${esc(e.title)}">${hint}</div>`;
+        <img class="hero-img" src="${url}" alt="${esc(e.title)}">
+        <div class="zoom-hint">⤢ Tap to enlarge</div></div>`;
     }
-    return `<div class="invite-hero zoomable" id="hero" style="background-image:url('${url}')">${hint}</div>`;
+    return `<div class="invite-hero zoomable" id="hero" style="background-image:url('${url}')">
+      <div class="zoom-hint">⤢ View full image</div></div>`;
   }
 
   function openLightbox() {
