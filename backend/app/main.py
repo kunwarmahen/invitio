@@ -1,3 +1,5 @@
+import datetime
+import html
 import os
 import re
 import time
@@ -8,10 +10,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from app.config import settings
-from app.database import Base, engine
+from app.database import AsyncSessionLocal, Base, engine
+from app.models import Event, Invite
 from app.routers import auth, events, manage, rsvp
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -97,10 +100,99 @@ _NO_CACHE = {"Cache-Control": "no-cache"}
 def _page(name: str) -> HTMLResponse:
     # Served no-cache (the page carries the build-stamped ?v=), so a new deploy
     # is picked up immediately and in turn busts the versioned css/js URLs.
-    html = _pages.get(name)
-    if html is None:  # not preloaded (e.g. reload edge case) — read on demand
-        html = re.sub(r"\?v=[\w.-]+", f"?v={BUILD_VERSION}", (FRONTEND_DIR / name).read_text())
-    return HTMLResponse(content=html, headers=_NO_CACHE)
+    content = _pages.get(name)
+    if content is None:  # not preloaded (e.g. reload edge case) — read on demand
+        content = re.sub(r"\?v=[\w.-]+", f"?v={BUILD_VERSION}", (FRONTEND_DIR / name).read_text())
+    return HTMLResponse(content=content, headers=_NO_CACHE)
+
+
+# --- Social link previews (Open Graph / Twitter Card) -----------------------
+# rsvp.html carries a <!--SOCIAL_META--> placeholder. For tokened RSVP routes we
+# look up the event and replace it with per-event og:/twitter: tags so links
+# pasted into iMessage/WhatsApp/Facebook/Slack unfurl with the invite image and
+# title instead of a generic "invitio" card.
+
+_SOCIAL_PLACEHOLDER = "<!--SOCIAL_META-->"
+_DEFAULT_TITLE = "You're invited — invitio"
+_DEFAULT_DESC = "You've been invited! RSVP now."
+
+
+def _event_summary(event: Event) -> str:
+    """A one-line human description from date/location, for events with no
+    description of their own."""
+    bits: list[str] = []
+    if event.host_display_name:
+        bits.append(f"Hosted by {event.host_display_name}")
+    if event.event_date:
+        bits.append(event.event_date.strftime("%a, %b %-d · %-I:%M %p"))
+    if event.location:
+        bits.append(event.location)
+    return " · ".join(bits) or "You're invited! RSVP now."
+
+
+def _meta(prop: str, content: str, *, name: bool = False) -> str:
+    attr = "name" if name else "property"
+    return f'    <meta {attr}="{html.escape(prop, quote=True)}" content="{html.escape(content, quote=True)}">'
+
+
+def _social_meta(event: Event | None, url: str) -> str:
+    """Build the <title> + og/twitter meta block injected into rsvp.html."""
+    if event is None:
+        title, desc, image = _DEFAULT_TITLE, _DEFAULT_DESC, None
+    else:
+        title = event.title or "You're invited"
+        desc = (event.description or "").strip() or _event_summary(event)
+        if len(desc) > 200:
+            desc = desc[:197].rstrip() + "…"
+        image = (settings.public_base_url + event.image_path) if event.image_path else None
+
+    lines = [
+        f"    <title>{html.escape(title)}</title>",
+        _meta("description", desc, name=True),
+        _meta("og:title", title),
+        _meta("og:description", desc),
+        _meta("og:type", "website"),
+        _meta("og:url", url),
+        _meta("og:site_name", "invitio"),
+    ]
+    if image:
+        lines += [
+            _meta("og:image", image),
+            _meta("twitter:card", "summary_large_image", name=True),
+            _meta("twitter:image", image, name=True),
+        ]
+    else:
+        lines.append(_meta("twitter:card", "summary", name=True))
+    lines += [
+        _meta("twitter:title", title, name=True),
+        _meta("twitter:description", desc, name=True),
+    ]
+    return "\n".join(lines)
+
+
+async def _event_for_token(token: str, *, invite: bool) -> Event | None:
+    """Resolve a URL token to its Event for OG injection. /i/ tokens are invite
+    tokens; /e/ tokens are the event's public token. Returns None if unknown."""
+    async with AsyncSessionLocal() as db:
+        if invite:
+            inv = (await db.execute(select(Invite).where(Invite.token == token))).scalar_one_or_none()
+            if not inv:
+                return None
+            return (await db.execute(select(Event).where(Event.id == inv.event_id))).scalar_one_or_none()
+        return (await db.execute(select(Event).where(Event.public_token == token))).scalar_one_or_none()
+
+
+async def _rsvp_page(token: str, *, invite: bool) -> HTMLResponse:
+    resp = _page("rsvp.html")
+    path = f"/i/{token}" if invite else f"/e/{token}"
+    try:
+        event = await _event_for_token(token, invite=invite)
+    except Exception:
+        event = None  # never let a lookup hiccup break the page render
+    meta = _social_meta(event, f"{settings.public_base_url}{path}")
+    resp.body = resp.body.replace(_SOCIAL_PLACEHOLDER.encode(), meta.encode())
+    resp.headers["content-length"] = str(len(resp.body))
+    return resp
 
 
 @app.get("/")
@@ -115,15 +207,17 @@ def quick_create_page():
 
 
 @app.get("/e/{token}")
-def share_rsvp_page(token: str):
-    # Public RSVP via the shareable event link. Token is read client-side.
-    return _page("rsvp.html")
+async def share_rsvp_page(token: str):
+    # Public RSVP via the shareable event link. Token is read client-side; the
+    # server injects per-event Open Graph tags so the link unfurls when shared.
+    return await _rsvp_page(token, invite=False)
 
 
 @app.get("/i/{token}")
-def invite_rsvp_page(token: str):
-    # Public RSVP via a personalized invite link. Token is read client-side.
-    return _page("rsvp.html")
+async def invite_rsvp_page(token: str):
+    # Public RSVP via a personalized invite link. Token is read client-side; the
+    # server injects per-event Open Graph tags so the link unfurls when shared.
+    return await _rsvp_page(token, invite=True)
 
 
 @app.get("/m/{token}")

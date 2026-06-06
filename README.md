@@ -26,6 +26,9 @@ reverse proxy.
 - **Invite by email** — each guest gets a unique tokenized RSVP link (emailed
   via Gmail when configured).
 - **Share a link** — one public link anyone can open and RSVP through.
+- **Social link previews** — RSVP links carry per-event Open Graph / Twitter
+  Card tags (title, description, invite image), so pasting one into
+  iMessage/WhatsApp/Facebook/Slack unfurls with the actual invite.
 - **RSVP without login** — yes / maybe / no, party size (+1s), and a note.
   Re-submitting updates the existing response instead of duplicating it.
 - **Add to Calendar** — guests get Google Calendar + `.ics` (Apple/Outlook)
