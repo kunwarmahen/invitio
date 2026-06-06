@@ -13,19 +13,30 @@ from app import event_service
 from app.config import settings
 from app.database import get_db
 from app.email_service import email_configured, send_host_rsvp_notification
-from app.models import Event, Invite, Rsvp
-from app.schemas import PublicEventOut, QuestionOut, RsvpOut, RsvpSubmit
+from app.models import Event, Invite, Rsvp, WallPost
+from app.schemas import (
+    PublicEventOut,
+    QuestionOut,
+    RsvpOut,
+    RsvpSubmit,
+    WallPostCreate,
+    WallPostOut,
+)
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 
 
-_WITH_QUESTIONS = (selectinload(Event.questions),)
+_WITH_PUBLIC = (
+    selectinload(Event.questions),
+    selectinload(Event.wall_posts),
+    selectinload(Event.rsvps),
+)
 
 
 async def _event_by_public_token(token: str, db: AsyncSession) -> Event:
     event = (
         await db.execute(
-            select(Event).where(Event.public_token == token).options(*_WITH_QUESTIONS)
+            select(Event).where(Event.public_token == token).options(*_WITH_PUBLIC)
         )
     ).scalar_one_or_none()
     if not event:
@@ -40,7 +51,7 @@ async def _resolve_token(token: str, db: AsyncSession) -> tuple[Event, Invite | 
     if invite:
         event = (
             await db.execute(
-                select(Event).where(Event.id == invite.event_id).options(*_WITH_QUESTIONS)
+                select(Event).where(Event.id == invite.event_id).options(*_WITH_PUBLIC)
             )
         ).scalar_one_or_none()
         if not event:
@@ -72,6 +83,10 @@ def _public_event(event: Event, invite: Invite | None, existing: Rsvp | None) ->
         allow_plus_ones=event.allow_plus_ones,
         public_token=event.public_token,
         questions=[QuestionOut.model_validate(q) for q in event.questions],
+        wall_enabled=event.wall_enabled,
+        guestlist_public=event.guestlist_public,
+        wall_posts=[WallPostOut.model_validate(p) for p in event.wall_posts] if event.wall_enabled else [],
+        coming=event_service.coming_list(event) if event.guestlist_public else [],
         guest_name=invite.guest_name if invite else "",
         guest_email=invite.guest_email if invite else "",
         existing_rsvp=RsvpOut.model_validate(existing) if existing else None,
@@ -187,3 +202,15 @@ async def _notify_host(**kwargs) -> None:
     except Exception as exc:
         if settings.debug:
             print(f"[EMAIL] host RSVP notification failed: {exc}")
+
+
+@router.post("/wall/{token}", response_model=WallPostOut)
+async def post_to_wall(token: str, body: WallPostCreate, db: AsyncSession = Depends(get_db)):
+    event, _ = await _resolve_token(token, db)
+    if not event.wall_enabled:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="The guest wall is closed for this event")
+    post = WallPost(event_id=event.id, guest_name=body.guest_name.strip(), message=body.message.strip())
+    db.add(post)
+    await db.commit()
+    await db.refresh(post)
+    return WallPostOut.model_validate(post)

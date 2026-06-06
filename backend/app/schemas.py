@@ -73,6 +73,8 @@ class EventCreate(BaseModel):
     theme: str = "violet"
     image_fit: str = Field(default="contain", pattern="^(cover|contain)$")
     allow_plus_ones: bool = True
+    wall_enabled: bool = False
+    guestlist_public: bool = False
 
 
 class EventUpdate(BaseModel):
@@ -86,6 +88,8 @@ class EventUpdate(BaseModel):
     theme: str | None = None
     image_fit: str | None = Field(default=None, pattern="^(cover|contain)$")
     allow_plus_ones: bool | None = None
+    wall_enabled: bool | None = None
+    guestlist_public: bool | None = None
 
 
 class QuickCreate(EventCreate):
@@ -159,6 +163,41 @@ class RsvpOut(BaseModel):
         from_attributes = True
 
 
+# ── Guest wall ───────────────────────────────────────────────────────────────
+class WallPostOut(BaseModel):
+    id: int
+    guest_name: str
+    message: str
+    created_at: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
+
+class WallPostCreate(BaseModel):
+    guest_name: str = Field(min_length=1, max_length=120)
+    message: str = Field(min_length=1, max_length=500)
+
+
+class ComingOut(BaseModel):
+    guest_name: str
+    party_size: int
+
+
+# ── Co-hosts ─────────────────────────────────────────────────────────────────
+class CohostOut(BaseModel):
+    user_id: int
+    email: str
+    name: str
+
+    class Config:
+        from_attributes = True
+
+
+class AddCohostRequest(BaseModel):
+    email: EmailStr
+
+
 class EventOut(BaseModel):
     id: int
     title: str
@@ -172,8 +211,13 @@ class EventOut(BaseModel):
     image_fit: str
     theme: str
     allow_plus_ones: bool
+    wall_enabled: bool
+    guestlist_public: bool
     public_token: str
     created_at: datetime.datetime
+    # True when the current viewer owns the event (vs. a co-host). Set per-request
+    # in the router; defaults true for action-returns where the actor manages it.
+    is_owner: bool = True
 
     class Config:
         from_attributes = True
@@ -191,6 +235,8 @@ class EventDetail(EventOut):
     invites: list[InviteOut] = []
     rsvps: list[RsvpOut] = []
     questions: list[QuestionOut] = []
+    wall_posts: list[WallPostOut] = []
+    cohosts: list[CohostOut] = []
 
 
 # ── Broadcast ("message all guests") ─────────────────────────────────────────
@@ -277,6 +323,11 @@ class PublicEventOut(BaseModel):
     allow_plus_ones: bool
     public_token: str
     questions: list[QuestionOut] = []
+    # Guest wall (only populated when the respective toggle is on).
+    wall_enabled: bool = False
+    guestlist_public: bool = False
+    wall_posts: list[WallPostOut] = []
+    coming: list[ComingOut] = []
     # Prefilled from the personal invite link, when present.
     guest_name: str = ""
     guest_email: str = ""

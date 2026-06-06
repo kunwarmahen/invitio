@@ -8,6 +8,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -55,6 +56,10 @@ class Event(Base):
     image_fit: Mapped[str] = mapped_column(String, default="contain")
     theme: Mapped[str] = mapped_column(String, default="violet")
     allow_plus_ones: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Optional public guest wall: a well-wishes board and/or a "who's coming"
+    # list on the invite page. Both off by default for privacy.
+    wall_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    guestlist_public: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Public, unguessable token used for the shareable RSVP link (/e/<token>).
     public_token: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
@@ -74,6 +79,14 @@ class Event(Base):
         back_populates="event",
         cascade="all, delete-orphan",
         order_by="EventQuestion.position",
+    )
+    wall_posts: Mapped[list["WallPost"]] = relationship(
+        back_populates="event",
+        cascade="all, delete-orphan",
+        order_by="WallPost.created_at.desc()",
+    )
+    cohosts: Mapped[list["EventCohost"]] = relationship(
+        back_populates="event", cascade="all, delete-orphan"
     )
 
 
@@ -146,3 +159,41 @@ class RsvpAnswer(Base):
 
     rsvp: Mapped["Rsvp"] = relationship(back_populates="answers")
     question: Mapped["EventQuestion"] = relationship(back_populates="answers")
+
+
+class WallPost(Base):
+    """A public well-wish left on an event's guest wall by anyone with the link."""
+    __tablename__ = "wall_posts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), index=True, nullable=False)
+    guest_name: Mapped[str] = mapped_column(String, nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=_utcnow)
+
+    event: Mapped["Event"] = relationship(back_populates="wall_posts")
+
+
+class EventCohost(Base):
+    """Grants another registered account full management of an event (except
+    deleting it or managing co-hosts, which stay owner-only)."""
+    __tablename__ = "event_cohosts"
+    __table_args__ = (UniqueConstraint("event_id", "user_id", name="uq_event_cohost"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), index=True, nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=_utcnow)
+
+    event: Mapped["Event"] = relationship(back_populates="cohosts")
+    user: Mapped["User"] = relationship()
+
+    # Proxied from the linked user so CohostOut (user_id/email/name) maps directly
+    # from this row. Requires `user` to be eager-loaded.
+    @property
+    def email(self) -> str:
+        return self.user.email
+
+    @property
+    def name(self) -> str:
+        return self.user.name

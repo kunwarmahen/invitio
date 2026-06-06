@@ -161,6 +161,10 @@
             ${questionsListHTML(e.questions)}
             <button class="btn btn-line btn-sm" id="edit-questions-btn" style="margin-top:10px">✎ Edit questions</button>
           </div>
+          <div class="panel"><h4>Guest wall (${e.wall_posts.length})</h4>
+            ${e.wall_enabled ? "" : `<p class="g-sub" style="margin-bottom:8px">The guest wall is off — enable it in Edit.</p>`}
+            ${wallModerationHTML(e.wall_posts)}
+          </div>
         </div>
       </div>`;
 
@@ -177,8 +181,22 @@
       try { await api("/ai/image", { method: "POST", body: { prompt: "" } }); toast("Image generated"); load(); }
       catch (err) { toast(err.message, true); genImg.disabled = false; genImg.innerHTML = "✨ Generate image"; }
     };
+    document.querySelectorAll("[data-del-post]").forEach((b) =>
+      b.addEventListener("click", async () => {
+        try { await api(`/wall/${b.dataset.delPost}`, { method: "DELETE" }); toast("Post removed"); load(); }
+        catch (err) { toast(err.message, true); }
+      }));
     document.querySelectorAll("[data-copy]").forEach((b) =>
       b.addEventListener("click", () => copy(b.dataset.copy)));
+  }
+
+  function wallModerationHTML(posts) {
+    if (!posts || !posts.length) return `<p class="g-sub" style="padding:8px 0">No posts yet.</p>`;
+    return posts.map((p) => `<div class="guest-row">
+      <div><div class="g-name">${esc(p.guest_name)}</div>
+        <div class="g-sub" style="white-space:pre-wrap">${esc(p.message)}</div></div>
+      <button class="btn btn-line btn-sm" data-del-post="${p.id}">Delete</button>
+    </div>`).join("");
   }
 
   function answersHTML(answers, questions) {
@@ -340,6 +358,10 @@
           <input type="checkbox" id="f-fit" style="width:auto" ${e.image_fit === "contain" ? "checked" : ""}> Show the full image (don't crop it)</label></div>
         <div class="field"><label style="display:flex;gap:8px;align-items:center;cursor:pointer">
           <input type="checkbox" id="f-plus" style="width:auto" ${e.allow_plus_ones ? "checked" : ""}> Allow +1s</label></div>
+        <div class="field"><label style="display:flex;gap:8px;align-items:center;cursor:pointer">
+          <input type="checkbox" id="f-wall" style="width:auto" ${e.wall_enabled ? "checked" : ""}> Enable the guest wall (public well-wishes)</label></div>
+        <div class="field"><label style="display:flex;gap:8px;align-items:center;cursor:pointer">
+          <input type="checkbox" id="f-guestlist" style="width:auto" ${e.guestlist_public ? "checked" : ""}> Show a public "who's coming" list</label></div>
         <div class="modal-foot">
           <button type="button" class="btn btn-line" data-close>Cancel</button>
           <button type="submit" class="btn btn-primary" id="ev-save">Save changes</button>
@@ -381,6 +403,8 @@
           theme,
           image_fit: $("#f-fit").checked ? "contain" : "cover",
           allow_plus_ones: $("#f-plus").checked,
+          wall_enabled: $("#f-wall").checked,
+          guestlist_public: $("#f-guestlist").checked,
         }});
         closeModal(); toast("Saved"); load();
       } catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = "Save changes"; }

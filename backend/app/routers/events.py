@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,13 +7,15 @@ from app import event_service
 from app.auth import get_current_user, new_token
 from app.database import get_db
 from app.email_service import email_configured
-from app.models import Event, Rsvp, User
+from app.models import Event, EventCohost, Rsvp, User
 from app.schemas import (
+    AddCohostRequest,
     AddInvitesRequest,
     AddInvitesResult,
     AiImageRequest,
     BroadcastRequest,
     BroadcastResult,
+    CohostOut,
     EventCreate,
     EventDetail,
     EventOut,
@@ -27,7 +29,17 @@ from app.schemas import (
 router = APIRouter(prefix="/api/events", tags=["events"])
 
 
-async def _load_event(event_id: int, user: User, db: AsyncSession) -> Event:
+def _is_owner(event: Event, user: User) -> bool:
+    return event.host_id == user.id
+
+
+def _can_manage(event: Event, user: User) -> bool:
+    return _is_owner(event, user) or any(c.user_id == user.id for c in event.cohosts)
+
+
+async def _load_event(event_id: int, user: User, db: AsyncSession, *, owner_only: bool = False) -> Event:
+    """Load an event the user may manage. Owners and co-hosts both pass; a few
+    actions (delete, co-host management) require ownership via owner_only=True."""
     event = (
         await db.execute(
             select(Event)
@@ -36,12 +48,22 @@ async def _load_event(event_id: int, user: User, db: AsyncSession) -> Event:
                 selectinload(Event.invites),
                 selectinload(Event.rsvps).selectinload(Rsvp.answers),
                 selectinload(Event.questions),
+                selectinload(Event.wall_posts),
+                selectinload(Event.cohosts).selectinload(EventCohost.user),
             )
         )
     ).scalar_one_or_none()
-    if not event or event.host_id != user.id:
+    if not event or not _can_manage(event, user):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+    if owner_only and not _is_owner(event, user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the event owner can do that")
     return event
+
+
+def _detail(event: Event, user: User) -> EventDetail:
+    detail = EventDetail.model_validate(event)  # cohosts auto-map via EventCohost.email/name
+    detail.is_owner = _is_owner(event, user)
+    return detail
 
 
 @router.post("", response_model=EventOut, status_code=status.HTTP_201_CREATED)
@@ -69,17 +91,26 @@ async def create_event(body: EventCreate, user: User = Depends(get_current_user)
 
 @router.get("", response_model=list[EventOut])
 async def list_events(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    # Events the user owns, plus events shared with them as a co-host.
+    cohosted = select(EventCohost.event_id).where(EventCohost.user_id == user.id)
     rows = (
         await db.execute(
-            select(Event).where(Event.host_id == user.id).order_by(Event.created_at.desc())
+            select(Event)
+            .where(or_(Event.host_id == user.id, Event.id.in_(cohosted)))
+            .order_by(Event.created_at.desc())
         )
     ).scalars().all()
-    return [EventOut.model_validate(e) for e in rows]
+    out = []
+    for e in rows:
+        item = EventOut.model_validate(e)
+        item.is_owner = _is_owner(e, user)
+        out.append(item)
+    return out
 
 
 @router.get("/{event_id}", response_model=EventDetail)
 async def get_event(event_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    return EventDetail.model_validate(await _load_event(event_id, user, db))
+    return _detail(await _load_event(event_id, user, db), user)
 
 
 @router.put("/{event_id}", response_model=EventOut)
@@ -93,7 +124,7 @@ async def update_event(event_id: int, body: EventUpdate, user: User = Depends(ge
 
 @router.delete("/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_event(event_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await event_service.delete_event(await _load_event(event_id, user, db), db)
+    await event_service.delete_event(await _load_event(event_id, user, db, owner_only=True), db)
 
 
 @router.post("/{event_id}/image", response_model=EventOut)
@@ -136,3 +167,20 @@ async def ai_image(event_id: int, body: AiImageRequest, user: User = Depends(get
     event = await _load_event(event_id, user, db)
     await event_service.generate_event_image(event, body.prompt, db)
     return EventOut.model_validate(event)
+
+
+@router.delete("/{event_id}/wall/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_wall_post(event_id: int, post_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await event_service.delete_wall_post(await _load_event(event_id, user, db), post_id, db)
+
+
+@router.post("/{event_id}/cohosts", response_model=CohostOut, status_code=status.HTTP_201_CREATED)
+async def add_cohost(event_id: int, body: AddCohostRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    event = await _load_event(event_id, user, db, owner_only=True)
+    return await event_service.add_cohost(event, str(body.email), db)
+
+
+@router.delete("/{event_id}/cohosts/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_cohost(event_id: int, user_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    event = await _load_event(event_id, user, db, owner_only=True)
+    await event_service.remove_cohost(event, user_id, db)

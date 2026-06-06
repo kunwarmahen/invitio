@@ -232,6 +232,61 @@
     });
   }
 
+  // ── Guest wall + who's-coming ─────────────────────────────────────────────
+  function comingHTML(e) {
+    if (!e.guestlist_public) return "";
+    const list = e.coming || [];
+    const total = list.reduce((n, c) => n + (c.party_size || 1), 0);
+    const names = list.length
+      ? list.map((c) => `<span class="coming-chip">${esc(c.guest_name)}${c.party_size > 1 ? ` +${c.party_size - 1}` : ""}</span>`).join("")
+      : `<p class="g-sub" style="padding:4px 0">No one's said yes yet — be the first!</p>`;
+    return `<div class="wall-section">
+      <h3 style="font-size:18px;margin:0 0 10px">Who's coming${total ? ` (${total})` : ""}</h3>
+      <div class="coming-list">${names}</div></div>`;
+  }
+
+  function wallPostHTML(p) {
+    return `<div class="wall-post">
+      <div class="wall-msg">${esc(p.message)}</div>
+      <div class="g-sub">— ${esc(p.guest_name)}</div></div>`;
+  }
+
+  function wallHTML(e) {
+    if (!e.wall_enabled) return "";
+    const posts = (e.wall_posts || []).map(wallPostHTML).join("");
+    return `<div class="wall-section">
+      <h3 style="font-size:18px;margin:0 0 10px">Guest wall</h3>
+      <div class="wall-form">
+        <input id="wall-name" placeholder="Your name" value="${esc((event.existing_rsvp && event.existing_rsvp.guest_name) || event.guest_name || "")}">
+        <textarea id="wall-msg" placeholder="Leave a well-wish…"></textarea>
+        <button class="btn btn-line btn-sm" id="wall-post">Post to the wall</button>
+      </div>
+      <div id="wall-list" style="margin-top:14px">${posts ||
+        `<p class="g-sub" style="padding:4px 0">No messages yet — say something nice!</p>`}</div>
+    </div>`;
+  }
+
+  async function submitWallPost() {
+    const name = $("#wall-name").value.trim();
+    const message = $("#wall-msg").value.trim();
+    if (!name || !message) { toast("Add your name and a message", true); return; }
+    const btn = $("#wall-post"); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+    try {
+      const res = await fetch(`/api/public/wall/${token}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ guest_name: name, message }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || "Couldn't post — please try again");
+      const list = $("#wall-list");
+      if (list.querySelector(".g-sub")) list.innerHTML = "";
+      list.insertAdjacentHTML("afterbegin", wallPostHTML(data));
+      $("#wall-msg").value = "";
+      toast("Posted to the wall 🎉");
+    } catch (err) { toast(err.message, true); }
+    finally { btn.disabled = false; btn.textContent = "Post to the wall"; }
+  }
+
   function render() {
     const e = event;
     const hero = heroHTML(e);
@@ -270,6 +325,8 @@
             <button class="btn btn-primary" id="rsvp-submit" style="width:100%;font-size:16px;padding:15px">
               ${existing ? "Update my RSVP" : "Send RSVP"}</button>
           </div>
+          ${comingHTML(e)}
+          ${wallHTML(e)}
         </div>
       </div>`;
 
@@ -292,6 +349,8 @@
     }
 
     $("#rsvp-submit").addEventListener("click", submit);
+    const wallBtn = $("#wall-post");
+    if (wallBtn) wallBtn.addEventListener("click", submitWallPost);
     wireCalendar();
     const heroEl = $("#hero");
     if (heroEl && event.image_path) heroEl.addEventListener("click", openLightbox);

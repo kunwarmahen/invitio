@@ -161,7 +161,7 @@
     return `<div class="event-card" data-eid="${e.id}">
       ${thumb}
       <div class="body">
-        <h3>${esc(e.title)}</h3>
+        <h3>${esc(e.title)}${e.is_owner ? "" : ` <span class="shared-badge">Shared</span>`}</h3>
         <div class="meta">📅 ${esc(fmtDateShort(e.event_date, e.timezone))}${e.location ? " · 📍 " + esc(e.location) : ""}</div>
       </div>
     </div>`;
@@ -175,7 +175,8 @@
   function openEventModal(ev) {
     const editing = !!ev;
     const data = ev || { title: "", description: "", location: "", event_date: null, event_end: null,
-      host_display_name: me.name || "", theme: "violet", image_fit: "contain", allow_plus_ones: true };
+      host_display_name: me.name || "", theme: "violet", image_fit: "contain", allow_plus_ones: true,
+      wall_enabled: false, guestlist_public: false };
     const swatches = THEMES.map((t) =>
       `<div class="sw ${t === data.theme ? "sel" : ""}" data-theme-pick="${t}" style="background:${THEME_HEX[t]}"></div>`).join("");
 
@@ -205,6 +206,12 @@
         <div class="field"><label style="display:flex;gap:8px;align-items:center;cursor:pointer">
           <input type="checkbox" id="f-plus" style="width:auto" ${data.allow_plus_ones ? "checked" : ""}>
           Allow guests to bring +1s</label></div>
+        <div class="field"><label style="display:flex;gap:8px;align-items:center;cursor:pointer">
+          <input type="checkbox" id="f-wall" style="width:auto" ${data.wall_enabled ? "checked" : ""}>
+          Enable the guest wall (public well-wishes)</label></div>
+        <div class="field"><label style="display:flex;gap:8px;align-items:center;cursor:pointer">
+          <input type="checkbox" id="f-guestlist" style="width:auto" ${data.guestlist_public ? "checked" : ""}>
+          Show a public "who's coming" list</label></div>
         <div class="modal-foot">
           <button type="button" class="btn btn-line" data-close>Cancel</button>
           <button type="submit" class="btn btn-primary" id="ev-save">${editing ? "Save changes" : "Create event"}</button>
@@ -250,6 +257,8 @@
         theme,
         image_fit: $("#f-fit").checked ? "contain" : "cover",
         allow_plus_ones: $("#f-plus").checked,
+        wall_enabled: $("#f-wall").checked,
+        guestlist_public: $("#f-guestlist").checked,
       };
       const btn = $("#ev-save"); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
       try {
@@ -317,8 +326,9 @@
             <a class="btn btn-line btn-sm" href="/e/${esc(e.public_token)}" target="_blank">👁 Preview invite</a>
             <button class="btn btn-line btn-sm" id="broadcast-btn">✉️ Message guests</button>
             ${aiStatus.image ? `<button class="btn btn-line btn-sm" id="gen-img-btn">✨ Generate image</button>` : ""}
-            <button class="btn btn-danger btn-sm" id="del-btn">🗑 Delete</button>
+            ${e.is_owner ? `<button class="btn btn-danger btn-sm" id="del-btn">🗑 Delete</button>` : ""}
           </div>
+          ${e.is_owner ? "" : `<p class="g-sub" style="margin-top:8px">🔗 Shared with you as a co-host.</p>`}
         </div>
       </div>
 
@@ -337,6 +347,11 @@
           <div class="panel">
             <h4>Who's responded</h4>
             ${rsvpRows}
+          </div>
+          <div class="panel">
+            <h4>Guest wall (${e.wall_posts.length})</h4>
+            ${e.wall_enabled ? "" : `<p class="g-sub" style="margin-bottom:8px">The guest wall is off — enable it in Edit.</p>`}
+            ${wallModerationHTML(e.wall_posts)}
           </div>
         </div>
 
@@ -367,20 +382,70 @@
             ${questionsListHTML(e.questions)}
             <button class="btn btn-line btn-sm" id="edit-questions-btn" style="margin-top:10px">✎ Edit questions</button>
           </div>
+          <div class="panel">
+            <h4>Co-hosts (${e.cohosts.length})</h4>
+            ${cohostsHTML(e)}
+            ${e.is_owner ? `<div class="share-box" style="margin-top:10px">
+              <input id="cohost-email" type="email" placeholder="their@email.com">
+              <button class="btn btn-primary btn-sm" id="add-cohost-btn">Add</button>
+            </div>
+            <p class="g-sub" style="margin-top:6px">They need an invitio account. Co-hosts can manage everything except deleting the event.</p>` : ""}
+          </div>
         </div>
       </div>`;
 
     // wire up
     $("#edit-btn").onclick = () => openEventModal(e);
-    $("#del-btn").onclick = () => confirmDelete(e);
+    const delBtn = $("#del-btn"); if (delBtn) delBtn.onclick = () => confirmDelete(e);
     $("#img-btn").onclick = () => triggerUpload(e.id);
     $("#add-invites-btn").onclick = () => addInvites(e.id);
     $("#broadcast-btn").onclick = () => openBroadcastModal(e);
     $("#edit-questions-btn").onclick = () => openQuestionsModal(e);
     const genImg = $("#gen-img-btn");
     if (genImg) genImg.onclick = () => generateImage(e.id, genImg);
+    const addCohost = $("#add-cohost-btn");
+    if (addCohost) addCohost.onclick = () => addCohostHandler(e.id);
+    document.querySelectorAll("[data-del-post]").forEach((b) =>
+      b.addEventListener("click", () => deleteWallPost(e.id, b.dataset.delPost)));
+    document.querySelectorAll("[data-del-cohost]").forEach((b) =>
+      b.addEventListener("click", () => removeCohost(e.id, b.dataset.delCohost)));
     document.querySelectorAll("[data-copy]").forEach((b) =>
       b.addEventListener("click", () => copy(b.dataset.copy)));
+  }
+
+  function wallModerationHTML(posts) {
+    if (!posts || !posts.length) return `<p class="g-sub" style="padding:8px 0">No posts yet.</p>`;
+    return posts.map((p) => `<div class="guest-row">
+      <div><div class="g-name">${esc(p.guest_name)}</div>
+        <div class="g-sub" style="white-space:pre-wrap">${esc(p.message)}</div></div>
+      <button class="btn btn-line btn-sm" data-del-post="${p.id}">Delete</button>
+    </div>`).join("");
+  }
+
+  function cohostsHTML(e) {
+    if (!e.cohosts.length) return `<p class="g-sub" style="padding:8px 0">No co-hosts yet.</p>`;
+    return e.cohosts.map((c) => `<div class="guest-row">
+      <div><div class="g-name">${esc(c.name || c.email)}</div><div class="g-sub">${esc(c.email)}</div></div>
+      ${e.is_owner ? `<button class="btn btn-line btn-sm" data-del-cohost="${c.user_id}">Remove</button>` : ""}
+    </div>`).join("");
+  }
+
+  async function deleteWallPost(eventId, postId) {
+    try { await api(`/events/${eventId}/wall/${postId}`, { method: "DELETE" }); toast("Post removed"); openEvent(eventId); }
+    catch (err) { toast(err.message, true); }
+  }
+
+  async function addCohostHandler(eventId) {
+    const email = $("#cohost-email").value.trim();
+    if (!email) { toast("Enter their email", true); return; }
+    const btn = $("#add-cohost-btn"); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+    try { await api(`/events/${eventId}/cohosts`, { method: "POST", body: { email } }); toast("Co-host added"); openEvent(eventId); }
+    catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = "Add"; }
+  }
+
+  async function removeCohost(eventId, userId) {
+    try { await api(`/events/${eventId}/cohosts/${userId}`, { method: "DELETE" }); toast("Co-host removed"); openEvent(eventId); }
+    catch (err) { toast(err.message, true); }
   }
 
   async function generateImage(eventId, btn) {

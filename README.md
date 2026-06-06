@@ -36,6 +36,10 @@ reverse proxy.
   or multi-select), optionally required; answers show on the dashboard.
 - **Message all guests** — broadcast an update or cancellation by email,
   targeted by RSVP status (everyone / yes / maybe / no / not-yet-responded).
+- **Guest wall** — optional public well-wishes board and a "who's coming" list
+  on the invite, each toggleable per event; the host can moderate posts.
+- **Co-hosts** — share full event management with another invitio account
+  (owner keeps delete + co-host control).
 - **AI generation (optional)** — generate invite copy, broadcast drafts, and a
   hero image from any OpenAI-compatible endpoint. Local-first: Ollama / llama.cpp
   for text, LocalAI (SDXL/FLUX) for images. Off until configured; see `.env.example`.

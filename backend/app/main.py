@@ -53,6 +53,8 @@ async def lifespan(app: FastAPI):
         ("image_fit", "VARCHAR NOT NULL DEFAULT 'contain'"),
         ("reminder_sent_at", "TIMESTAMP"),
         ("timezone", "VARCHAR"),
+        ("wall_enabled", "BOOLEAN NOT NULL DEFAULT false"),
+        ("guestlist_public", "BOOLEAN NOT NULL DEFAULT false"),
     ]
     for col, decl in event_column_migrations:
         try:

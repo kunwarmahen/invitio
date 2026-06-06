@@ -15,7 +15,7 @@ from app.auth import new_token
 from app.config import settings
 from app.database import get_db
 from app.email_service import email_configured, send_manage_link_email
-from app.models import Event, Rsvp
+from app.models import Event, EventCohost, Rsvp
 from app.schemas import (
     AddInvitesRequest,
     AddInvitesResult,
@@ -47,6 +47,8 @@ async def _load_managed(token: str, db: AsyncSession) -> Event:
                 selectinload(Event.invites),
                 selectinload(Event.rsvps).selectinload(Rsvp.answers),
                 selectinload(Event.questions),
+                selectinload(Event.wall_posts),
+                selectinload(Event.cohosts).selectinload(EventCohost.user),
             )
         )
     ).scalar_one_or_none()
@@ -163,3 +165,8 @@ async def manage_ai_image(token: str, body: AiImageRequest, db: AsyncSession = D
     event = await _load_managed(token, db)
     await event_service.generate_event_image(event, body.prompt, db)
     return EventOut.model_validate(event)
+
+
+@router.delete("/manage/{token}/wall/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def manage_delete_wall_post(token: str, post_id: int, db: AsyncSession = Depends(get_db)):
+    await event_service.delete_wall_post(await _load_managed(token, db), post_id, db)

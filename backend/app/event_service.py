@@ -13,12 +13,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import new_token
 from app.config import settings
 from app.email_service import email_configured, send_broadcast_email, send_invite_email
-from app.models import Event, EventQuestion, Invite, Rsvp, RsvpAnswer
+from app.models import Event, EventCohost, EventQuestion, Invite, Rsvp, RsvpAnswer, User, WallPost
 from app.schemas import (
     AddInvitesRequest,
     AnswerIn,
     BroadcastRequest,
     BroadcastResult,
+    CohostOut,
+    ComingOut,
     EventSummary,
     EventUpdate,
     InviteOut,
@@ -267,3 +269,53 @@ async def send_broadcast(event: Event, body: BroadcastRequest) -> BroadcastResul
             if settings.debug:
                 print(f"[BROADCAST] to {email} failed: {exc}")
     return BroadcastResult(sent=sent, recipients=len(recipients), email_enabled=True)
+
+
+# ── Guest wall ───────────────────────────────────────────────────────────────
+def coming_list(event: Event) -> list[ComingOut]:
+    """Names (and party size) of guests who said yes — for the public 'who's
+    coming' list. Never exposes emails."""
+    return [
+        ComingOut(guest_name=r.guest_name, party_size=max(r.party_size, 1))
+        for r in event.rsvps if r.status == "yes"
+    ]
+
+
+async def delete_wall_post(event: Event, post_id: int, db: AsyncSession) -> None:
+    post = (
+        await db.execute(
+            select(WallPost).where(WallPost.id == post_id, WallPost.event_id == event.id)
+        )
+    ).scalar_one_or_none()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    await db.delete(post)
+    await db.commit()
+
+
+# ── Co-hosts ─────────────────────────────────────────────────────────────────
+async def add_cohost(event: Event, email: str, db: AsyncSession) -> CohostOut:
+    target = (
+        await db.execute(select(User).where(User.email == email.lower().strip()))
+    ).scalar_one_or_none()
+    if not target:
+        raise HTTPException(status_code=404, detail="No invitio account with that email — ask them to sign up first")
+    if target.id == event.host_id:
+        raise HTTPException(status_code=400, detail="That person owns this event")
+    if any(c.user_id == target.id for c in event.cohosts):
+        raise HTTPException(status_code=400, detail="They're already a co-host")
+    db.add(EventCohost(event_id=event.id, user_id=target.id))
+    await db.commit()
+    return CohostOut(user_id=target.id, email=target.email, name=target.name)
+
+
+async def remove_cohost(event: Event, user_id: int, db: AsyncSession) -> None:
+    row = (
+        await db.execute(
+            select(EventCohost).where(EventCohost.event_id == event.id, EventCohost.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Co-host not found")
+    await db.delete(row)
+    await db.commit()

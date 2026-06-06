@@ -77,6 +77,24 @@ textarea { resize: vertical; min-height: 84px; }
 .q-opt:hover { border-color: var(--accent, #7c3aed); }
 .q-opt input { width: auto; margin: 0; accent-color: var(--accent, #7c3aed); }
 
+/* ── guest wall + who's-coming (public invite page) ── */
+.wall-section { margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--border, #e6e6ef); }
+.coming-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.coming-chip {
+    display: inline-block; padding: 6px 12px; border-radius: 999px;
+    background: var(--accent-soft, #f3effe); color: var(--accent, #7c3aed); font-weight: 600; font-size: 14px;
+}
+.wall-form { display: flex; flex-direction: column; gap: 8px; }
+.wall-post {
+    padding: 12px 14px; border-radius: 12px; background: var(--accent-soft, #f3effe);
+    margin-bottom: 10px;
+}
+.wall-msg { margin-bottom: 4px; white-space: pre-wrap; }
+.shared-badge {
+    font-size: 11px; font-weight: 700; vertical-align: middle; padding: 2px 8px;
+    border-radius: 999px; background: var(--accent-soft, #f3effe); color: var(--accent, #7c3aed);
+}
+
 /* ── auth screen ── */
 .auth-wrap {
     min-height: 100dvh; display: grid; place-items: center; padding: 24px;
