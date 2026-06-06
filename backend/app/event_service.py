@@ -21,6 +21,7 @@ from app.models import (
     EventImage,
     EventQuestion,
     Invite,
+    InviteView,
     Rsvp,
     RsvpAnswer,
     User,
@@ -36,8 +37,10 @@ from app.schemas import (
     EventSummary,
     EventUpdate,
     InviteOut,
+    InviteViewOut,
     QuestionIn,
     RsvpOut,
+    ViewLog,
 )
 
 def apply_update(event: Event, body: EventUpdate) -> None:
@@ -183,6 +186,9 @@ async def delete_event(event: Event, db: AsyncSession) -> None:
     for img in event.images:
         _remove_image(img)
     _remove_image_file(event.image_path)  # legacy events may predate the gallery
+    # View rows aren't eager-loaded here, so clear them explicitly before the
+    # event goes (same reason replace_questions deletes RsvpAnswer directly).
+    await db.execute(delete(InviteView).where(InviteView.event_id == event.id))
     await db.delete(event)
     await db.commit()
 
@@ -224,6 +230,7 @@ async def add_invites(event: Event, body: AddInvitesRequest, db: AsyncSession) -
                     location=event.location,
                     rsvp_url=rsvp_url,
                     image_url=image_url,
+                    view_token=inv.token,
                 )
                 if sent:
                     inv.sent_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
@@ -312,6 +319,83 @@ async def fetch_rsvp_page(
         )
     ).scalars().all()
     return list(rows), total
+
+
+# ── Invite-open tracking (view log) ──────────────────────────────────────────
+async def record_view(
+    event: Event, invite: Invite | None, ip: str, user_agent: str, db: AsyncSession
+) -> None:
+    """Log one open of an invite/event link (raw IP + user-agent) and, for a
+    personalized invite, bump its view counters. Called from the browser beacon,
+    so bots that don't run JS never reach here."""
+    now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    db.add(InviteView(
+        event_id=event.id,
+        invite_id=invite.id if invite else None,
+        ip=(ip or "")[:64],
+        user_agent=(user_agent or "")[:500],
+    ))
+    if invite:
+        invite.view_count = (invite.view_count or 0) + 1
+        invite.last_viewed_at = now
+        if invite.viewed_at is None:
+            invite.viewed_at = now
+    await db.commit()
+
+
+async def record_email_open(token: str, db: AsyncSession) -> None:
+    """Bump an invite's email-open counters from the tracking pixel. Best-effort
+    and deliberately IP-free: email opens are mostly fetched by provider proxies
+    (Apple/Gmail), so only the soft 'was rendered' signal is recorded, never an
+    IP. A bad/unknown token is a silent no-op (the pixel still returns)."""
+    invite = (
+        await db.execute(select(Invite).where(Invite.token == token))
+    ).scalar_one_or_none()
+    if not invite:
+        return
+    invite.email_open_count = (invite.email_open_count or 0) + 1
+    if invite.email_opened_at is None:
+        invite.email_opened_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    await db.commit()
+
+
+async def fetch_views(event_id: int, db: AsyncSession, limit: int = 200) -> ViewLog:
+    """Recent invite opens for an event (newest first, capped), plus headline
+    totals, for the host's view log. Guest names are resolved from the invite;
+    public-link opens have no invite and show as anonymous."""
+    base = select(func.count(InviteView.id)).where(InviteView.event_id == event_id)
+    total = (await db.execute(base)).scalar_one()
+    unique_ips = (
+        await db.execute(
+            select(func.count(func.distinct(InviteView.ip)))
+            .where(InviteView.event_id == event_id, InviteView.ip != "")
+        )
+    ).scalar_one()
+    anonymous = (
+        await db.execute(base.where(InviteView.invite_id.is_(None)))
+    ).scalar_one()
+    rows = (
+        await db.execute(
+            select(InviteView)
+            .where(InviteView.event_id == event_id)
+            .order_by(InviteView.created_at.desc(), InviteView.id.desc())
+            .options(selectinload(InviteView.invite))
+            .limit(limit)
+        )
+    ).scalars().all()
+    items = [
+        InviteViewOut(
+            id=v.id,
+            invite_id=v.invite_id,
+            guest_name=v.invite.guest_name if v.invite else "",
+            guest_email=v.invite.guest_email if v.invite else "",
+            ip=v.ip,
+            user_agent=v.user_agent,
+            created_at=v.created_at,
+        )
+        for v in rows
+    ]
+    return ViewLog(items=items, total=total, unique_ips=unique_ips, anonymous=anonymous)
 
 
 # ── Custom RSVP questions ────────────────────────────────────────────────────

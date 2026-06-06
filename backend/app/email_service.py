@@ -33,6 +33,18 @@ def _send_via_gmail(to_email: str, subject: str, html: str, text: str) -> None:
         server.sendmail(settings.gmail_address, [to_email], msg.as_string())
 
 
+def _tracking_pixel(view_token: str | None) -> str:
+    """Open-tracking pixel for an invite's email. Soft, IP-free signal — see the
+    /api/public/track endpoint and Invite.email_opened_at."""
+    if not view_token:
+        return ""
+    src = f"{settings.public_base_url}/api/public/track/{view_token}.gif"
+    return (
+        f"<img src='{escape(src)}' alt='' width='1' height='1' "
+        f"style='display:block;width:1px;height:1px;border:0;opacity:0'>"
+    )
+
+
 def _fmt_when(when: datetime.datetime | None) -> str:
     if not when:
         return ""
@@ -51,9 +63,11 @@ async def send_invite_email(
     location: str,
     rsvp_url: str,
     image_url: str | None = None,
+    view_token: str | None = None,
 ) -> bool:
     """Email a single tokenized RSVP link. Returns False (no-op) when Gmail
-    isn't configured; raises only on a genuine SMTP failure."""
+    isn't configured; raises only on a genuine SMTP failure. `view_token`, when
+    given, embeds the open-tracking pixel for that invite."""
     if not email_configured():
         return False
 
@@ -88,7 +102,7 @@ async def send_invite_email(
         f"padding:13px 26px;background:#7c3aed;color:#fff;border-radius:10px;"
         f"text-decoration:none;font-weight:600'>RSVP now</a></p>"
         f"<p style='color:#999;font-size:12px'>Or paste this link into your browser:<br>{safe_url}</p>"
-        f"</div></div>"
+        f"</div>{_tracking_pixel(view_token)}</div>"
     )
     text = (
         f"{safe_host} invites you to {event_title}.\n"
@@ -168,9 +182,11 @@ async def send_guest_reminder(
     rsvp_url: str,
     image_url: str | None,
     nudge: bool,
+    view_token: str | None = None,
 ) -> bool:
     """Pre-event email. `nudge=True` asks a non-responder to RSVP; otherwise it's
-    a "see you soon" reminder for a guest who said yes. No-op without Gmail."""
+    a "see you soon" reminder for a guest who said yes. No-op without Gmail.
+    `view_token`, when given, embeds the open-tracking pixel for that invite."""
     if not email_configured():
         return False
 
@@ -214,7 +230,7 @@ async def send_guest_reminder(
         f"padding:13px 26px;background:#7c3aed;color:#fff;border-radius:10px;"
         f"text-decoration:none;font-weight:600'>{cta}</a></p>"
         f"<p style='color:#999;font-size:12px'>Or paste this link into your browser:<br>{safe_url}</p>"
-        f"</div></div>"
+        f"</div>{_tracking_pixel(view_token)}</div>"
     )
     text = (
         f"{event_title} {lead}\n"

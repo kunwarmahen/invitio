@@ -4,9 +4,7 @@ A token in the URL is either an Event.public_token (the shareable link) or an
 Invite.token (a personalized link emailed to one guest). Both resolve to an
 event; an invite token additionally prefills/links the guest's response.
 """
-import datetime
-
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,6 +25,17 @@ from app.schemas import (
 )
 
 router = APIRouter(prefix="/api/public", tags=["public"])
+
+# A 1×1 transparent GIF returned by the email open-tracking pixel.
+_PIXEL_GIF = (
+    b"GIF89a\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff\x00\x00\x00!\xf9\x04\x01"
+    b"\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;"
+)
+_PIXEL_HEADERS = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
 
 
 _WITH_PUBLIC = (
@@ -113,10 +122,9 @@ async def public_invite(token: str, db: AsyncSession = Depends(get_db)):
     event, invite = await _resolve_token(token, db)
     existing = None
     if invite:
-        # Stamp the first open so the host can see who has looked at their invite.
-        if invite.viewed_at is None:
-            invite.viewed_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
-            await db.commit()
+        # View tracking (viewed_at/last_viewed_at/count + the IP log) is owned by
+        # the POST /view beacon below, which only fires in a real browser — so a
+        # link-preview bot fetching this endpoint no longer counts as a "view".
         existing = (
             await db.execute(
                 select(Rsvp).where(Rsvp.invite_id == invite.id).options(selectinload(Rsvp.answers))
@@ -217,6 +225,36 @@ async def _notify_host(**kwargs) -> None:
     except Exception as exc:
         if settings.debug:
             print(f"[EMAIL] host RSVP notification failed: {exc}")
+
+
+@router.post("/view/{token}", status_code=status.HTTP_204_NO_CONTENT)
+async def log_view(token: str, request: Request, db: AsyncSession = Depends(get_db)):
+    """Browser beacon fired when a guest actually opens an invite. Records the
+    open (IP + user-agent) for the host's view log; for a personalized invite it
+    also bumps that invite's view counters. Best-effort — a bad token is a no-op
+    rather than an error, so a stale link never surfaces a failure to the guest."""
+    rate_limit.check(request, "view", settings.rate_limit_view_per_hour)
+    try:
+        event, invite = await _resolve_token(token, db)
+    except HTTPException:
+        return
+    await event_service.record_view(
+        event, invite, rate_limit.client_ip(request),
+        request.headers.get("user-agent", ""), db,
+    )
+
+
+@router.get("/track/{token}.gif")
+async def track_email_open(token: str, db: AsyncSession = Depends(get_db)):
+    """Open-tracking pixel embedded in invite/reminder emails. Records a soft,
+    IP-free email-open signal for the invite, then always returns the 1×1 GIF —
+    a bad token, an already-tracked open, or a DB hiccup never changes the
+    response, so the image never breaks and the token's validity isn't leaked."""
+    try:
+        await event_service.record_email_open(token, db)
+    except Exception:
+        pass
+    return Response(content=_PIXEL_GIF, media_type="image/gif", headers=_PIXEL_HEADERS)
 
 
 @router.post("/wall/{token}", response_model=WallPostOut)

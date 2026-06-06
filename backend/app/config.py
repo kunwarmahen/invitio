@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     rate_limit_enabled: bool = True
     rate_limit_create_per_hour: int = 10   # quick-create events
     rate_limit_rsvp_per_hour: int = 60     # RSVP submissions
+    rate_limit_view_per_hour: int = 240    # invite-open view beacons
     rate_limit_wall_per_hour: int = 30     # guest-wall posts
     rate_limit_auth_per_hour: int = 30     # signup + login attempts
 

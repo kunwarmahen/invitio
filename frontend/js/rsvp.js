@@ -14,6 +14,20 @@
 
   let event = null;
   let chosenStatus = null;
+  let viewLogged = false;
+
+  // Tell the host this invite was actually opened (in a real browser, so link-
+  // preview bots that don't run JS don't count). Fired once per page open;
+  // sendBeacon survives the page being navigated away. Purely best-effort.
+  function logView() {
+    if (viewLogged) return;
+    viewLogged = true;
+    const url = `/api/public/view/${token}`;
+    try {
+      if (navigator.sendBeacon && navigator.sendBeacon(url)) return;
+    } catch (_) {}
+    fetch(url, { method: "POST", keepalive: true }).catch(() => {});
+  }
 
   // Decorative motif for the event's template (e.g. 🎂 for birthday), used on the
   // envelope and the empty-image placeholder. Falls back to ✦.
@@ -170,6 +184,7 @@
       const res = await fetch(`/api${path}`);
       if (!res.ok) throw new Error("This invitation link is invalid or has expired.");
       event = await res.json();
+      logView();
       document.body.setAttribute("data-theme", event.theme || "violet");
       // First visit this session → play the envelope reveal. Re-renders (e.g.
       // "change my response") and reduced-motion users go straight to the card.

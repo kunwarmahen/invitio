@@ -60,6 +60,25 @@
     if (tz) opts.timeZone = tz;
     return new Date(iso).toLocaleDateString(undefined, opts);
   }
+  // Short "3m ago / 2h ago / 4d ago", falling back to a date past a week.
+  function timeAgo(iso) {
+    if (!iso) return "";
+    const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+    if (s < 60) return "just now";
+    const m = s / 60; if (m < 60) return `${Math.floor(m)}m ago`;
+    const h = m / 60; if (h < 24) return `${Math.floor(h)}h ago`;
+    const d = h / 24; if (d < 7) return `${Math.floor(d)}d ago`;
+    return fmtDateShort(iso);
+  }
+  // Coarse "Browser · OS" from a user-agent, for the invite-open log.
+  function deviceLabel(ua) {
+    if (!ua) return "Unknown device";
+    const os = /iphone|ipad|ipod/i.test(ua) ? "iOS" : /android/i.test(ua) ? "Android"
+      : /mac os/i.test(ua) ? "Mac" : /windows/i.test(ua) ? "Windows" : /linux/i.test(ua) ? "Linux" : "";
+    const br = /edg/i.test(ua) ? "Edge" : /(chrome|crios)/i.test(ua) ? "Chrome"
+      : /(firefox|fxios)/i.test(ua) ? "Firefox" : /safari/i.test(ua) ? "Safari" : "";
+    return [br, os].filter(Boolean).join(" · ") || "Browser";
+  }
   // datetime-local needs "YYYY-MM-DDTHH:mm" in local time
   function toLocalInput(iso) {
     if (!iso) return "";
@@ -393,6 +412,10 @@
             ${showMoreHTML("rsvps", e.rsvps_total ?? e.rsvps.length, e.rsvps.length)}
           </div>
           <div class="panel">
+            <h4>Invite opens</h4>
+            <div id="views-panel"><p class="g-sub" style="padding:8px 0"><span class="spinner"></span> Loading…</p></div>
+          </div>
+          <div class="panel">
             <h4>Guest wall (${e.wall_posts.length})</h4>
             ${e.wall_enabled ? "" : `<p class="g-sub" style="margin-bottom:8px">The guest wall is off — enable it in Edit.</p>`}
             ${wallModerationHTML(e.wall_posts)}
@@ -468,6 +491,32 @@
       b.addEventListener("click", () => nativeShare(b.dataset.url, b.dataset.title)));
     document.querySelectorAll("[data-more]").forEach((b) =>
       b.addEventListener("click", () => loadMore(e, b)));
+    loadViews(e.id);
+  }
+
+  // ── Invite-open log (who/where the invite has been viewed from) ────────────
+  function viewsHTML(log) {
+    if (!log.total)
+      return `<p class="g-sub" style="padding:8px 0">No opens yet. An open is counted when a guest opens the invite in a browser.</p>`;
+    const ips = `${log.unique_ips} unique IP${log.unique_ips === 1 ? "" : "s"}`;
+    const anon = log.anonymous ? ` · ${log.anonymous} via the shared link` : "";
+    const head = `<p class="g-sub" style="margin-bottom:10px">${log.total} open${log.total === 1 ? "" : "s"} · ${ips}${anon}</p>`;
+    const rows = log.items.map((v) => {
+      const who = v.guest_name ? esc(v.guest_name)
+        : v.guest_email ? esc(v.guest_email) : "🔗 Shared link (anonymous)";
+      return `<div class="guest-row"><div>
+        <div class="g-name">${who}</div>
+        <div class="g-sub">${esc(v.ip || "no IP")} · ${esc(deviceLabel(v.user_agent))} · ${esc(timeAgo(v.created_at))}</div>
+      </div></div>`;
+    }).join("");
+    return head + rows;
+  }
+
+  async function loadViews(eventId) {
+    const el = $("#views-panel");
+    if (!el) return;
+    try { el.innerHTML = viewsHTML(await api(`/events/${eventId}/views`)); }
+    catch { el.innerHTML = `<p class="g-sub" style="padding:8px 0">Couldn't load opens.</p>`; }
   }
 
   function wallModerationHTML(posts) {
@@ -552,7 +601,7 @@
   function inviteRowHTML(i) {
     return `<div class="guest-row">
       <div><div class="g-name">${esc(i.guest_name || i.guest_email)}</div>
-        <div class="g-sub">${esc(i.guest_email)}${i.sent_at ? " · ✉️ invited" : " · not emailed"}${i.viewed_at ? " · 👁 opened" : ""}</div></div>
+        <div class="g-sub">${esc(i.guest_email)}${i.sent_at ? " · ✉️ invited" : " · not emailed"}${i.email_opened_at ? `<span title="Approximate — email apps and privacy proxies (Apple, Gmail) can over- or under-count opens"> · 📧 email opened</span>` : ""}${i.view_count ? ` · 👁 opened ${i.view_count}×${i.last_viewed_at ? " · " + esc(timeAgo(i.last_viewed_at)) : ""}` : ""}</div></div>
       <button class="btn btn-line btn-sm" data-copy="${esc(location.origin)}/i/${esc(i.token)}">Copy link</button>
     </div>`;
   }

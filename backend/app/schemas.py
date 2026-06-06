@@ -112,9 +112,33 @@ class InviteOut(BaseModel):
     token: str
     sent_at: datetime.datetime | None
     viewed_at: datetime.datetime | None = None
+    last_viewed_at: datetime.datetime | None = None
+    view_count: int = 0
+    email_opened_at: datetime.datetime | None = None
+    email_open_count: int = 0
 
     class Config:
         from_attributes = True
+
+
+# ── Invite-open tracking (view log) ──────────────────────────────────────────
+class InviteViewOut(BaseModel):
+    id: int
+    invite_id: int | None = None
+    # Resolved from the invite; "" for opens of the public shareable link.
+    guest_name: str = ""
+    guest_email: str = ""
+    ip: str = ""
+    user_agent: str = ""
+    created_at: datetime.datetime
+
+
+class ViewLog(BaseModel):
+    items: list[InviteViewOut] = []
+    total: int = 0
+    unique_ips: int = 0
+    # How many of `total` came from the public/forwarded link (no invite).
+    anonymous: int = 0
 
 
 # ── Image gallery ─────────────────────────────────────────────────────────────

@@ -39,14 +39,23 @@ reverse proxy.
 - **Social link previews** — RSVP links carry per-event Open Graph / Twitter
   Card tags (title, description, invite image), so pasting one into
   iMessage/WhatsApp/Facebook/Slack unfurls with the actual invite.
-- **"Viewed" tracking** — each personalized invite link records the first time
-  the guest opens it, so the host's guest list shows who's actually looked.
+- **Open tracking** — a browser beacon records when a guest actually opens their
+  invite (so link-preview bots that don't run JS don't inflate it). The guest list
+  shows open count + last-opened time, and an **"Invite opens" log** on the host +
+  manage dashboards lists each open with its **IP, device, and time** (opens of the
+  forwardable public link show as anonymous). Invite + reminder emails also carry a
+  soft, **IP-free email-open pixel** — a weak "rendered somewhere" hint shown as
+  *📧 email opened*, kept separate from the browser-accurate counts because
+  Apple/Gmail privacy proxies over- and under-count email opens.
 - **Invite a friend** — a forwardable share row on the RSVP page that passes the
   *public* event link (never the guest's personal token), so anyone can pass the
   invite along without being able to RSVP as someone else.
 - **RSVP without login** — yes / maybe / no, party size (+1s), and a note.
   Re-submitting updates the existing response instead of duplicating it. A
   "yes" gets a celebratory confetti burst (skipped under reduced-motion).
+- **RSVP deadline** — set an optional "RSVP by" date; guests see it on the invite
+  and the host/co-hosts see it on the dashboard for headcount planning. Soft by
+  design — responses are still accepted after it passes.
 - **Custom RSVP questions** — host-defined questions (free text, single-choice,
   or multi-select), optionally required; answers show on the dashboard.
 - **Message all guests** — broadcast an update or cancellation by email,
@@ -122,8 +131,8 @@ cd backend && pytest
 
 The suite (`backend/tests/`) runs against a throwaway SQLite DB via httpx's
 ASGITransport — no server or network needed. It covers auth, the RSVP/manage
-flows, invite-viewed tracking, the image pipeline (resize + magic-byte sniffing),
-pagination, and rate limiting.
+flows, open tracking (the view beacon's IP log + the email-open pixel), the image
+pipeline (resize + magic-byte sniffing), pagination, and rate limiting.
 
 ### Asset cache-busting
 
@@ -237,12 +246,16 @@ Interactive docs at `/docs` when running. Summary:
 | POST | `/api/events/{id}/invites` | ✓ | add guests + email links |
 | GET  | `/api/events/{id}/invites` · `/rsvps` | ✓ | paginated lists (`limit`/`offset`) |
 | GET  | `/api/events/{id}/summary` | ✓ | response counts |
+| GET  | `/api/events/{id}/views` | ✓ | invite-open log (IP/device/time) |
 | GET  | `/api/public/event/{token}` | — | event by share link |
 | GET  | `/api/public/invite/{token}` | — | event by personal link (prefilled) |
 | POST | `/api/public/rsvp/{token}` | — | submit / update an RSVP |
+| POST | `/api/public/view/{token}` | — | view beacon (logs a real-browser open) |
+| GET  | `/api/public/track/{token}.gif` | — | email open-tracking pixel (1×1 GIF) |
 | POST | `/api/public/events` | — | quick-create an event (no account) |
 | GET/PUT/DELETE | `/api/public/manage/{token}` | token | manage a no-account event |
 | POST | `/api/public/manage/{token}/image` · `/invites` | token | image / invites |
+| GET  | `/api/public/manage/{token}/views` | token | invite-open log (no-account event) |
 
 Pages: `/` (host app), `/quick` (no-account create), `/m/{token}` (no-account
 manage), `/e/{token}` (shared RSVP), `/i/{token}` (personal RSVP). The "Add to

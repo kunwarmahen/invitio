@@ -29,6 +29,7 @@ from app.schemas import (
     ReorderImagesRequest,
     RsvpOut,
     RsvpPage,
+    ViewLog,
 )
 
 router = APIRouter(prefix="/api/events", tags=["events"])
@@ -223,6 +224,12 @@ async def add_invites(event_id: int, body: AddInvitesRequest, user: User = Depen
 @router.get("/{event_id}/summary", response_model=EventSummary)
 async def event_summary(event_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     return event_service.summarize(await _load_event(event_id, user, db))
+
+
+@router.get("/{event_id}/views", response_model=ViewLog)
+async def event_views(event_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    event = await _load_event_slim(event_id, user, db)
+    return await event_service.fetch_views(event.id, db)
 
 
 @router.put("/{event_id}/questions", response_model=list[QuestionOut])

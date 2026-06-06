@@ -114,6 +114,9 @@ class Event(Base):
         cascade="all, delete-orphan",
         order_by="EventImage.position",
     )
+    views: Mapped[list["InviteView"]] = relationship(
+        back_populates="event", cascade="all, delete-orphan"
+    )
 
 
 class Invite(Base):
@@ -128,10 +131,41 @@ class Invite(Base):
     sent_at: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
     # First time the guest opened their personalized invite link, so the host can
     # see who has actually looked at the invitation. Stamped once (first view).
+    # viewed_at/last_viewed_at/view_count are all maintained by the view beacon
+    # (POST /public/view/<token>) so link-preview bots that don't run JS don't
+    # inflate them; the per-open detail (incl. IP) lives in `invite_views`.
     viewed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
+    last_viewed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
+    view_count: Mapped[int] = mapped_column(Integer, default=0)
+    # Soft email-open signal from the tracking pixel in the invite/reminder email.
+    # IP-free on purpose: email opens are mostly fetched by provider proxies
+    # (Apple Mail Privacy Protection, Gmail's image proxy) rather than the guest,
+    # so this is a weak "the email was rendered somewhere" hint, kept separate
+    # from the browser-accurate page-open counters above.
+    email_opened_at: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
+    email_open_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=_utcnow)
 
     event: Mapped["Event"] = relationship(back_populates="invites")
+
+
+class InviteView(Base):
+    """One logged open of an invite/event link, recorded by a browser beacon
+    (POST /public/view/<token>) so link-preview bots that don't run JS don't
+    pollute the log. `invite_id` is the personalized-link guest; null for opens
+    of the public shareable link (/e/<token>). Stores the raw client IP and
+    user-agent so the host can see who/where an invite has been viewed from."""
+    __tablename__ = "invite_views"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), index=True, nullable=False)
+    invite_id: Mapped[int | None] = mapped_column(ForeignKey("invites.id"), index=True, nullable=True)
+    ip: Mapped[str] = mapped_column(String, default="")
+    user_agent: Mapped[str] = mapped_column(String, default="")
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=_utcnow)
+
+    event: Mapped["Event"] = relationship(back_populates="views")
+    invite: Mapped["Invite | None"] = relationship()
 
 
 class EventImage(Base):

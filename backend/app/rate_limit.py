@@ -28,6 +28,12 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+# Public alias: other modules (e.g. the view-tracking beacon) need the same
+# proxy-aware client IP, not just the rate limiter.
+def client_ip(request: Request) -> str:
+    return _client_ip(request)
+
+
 def reset() -> None:
     """Clear all counters (used by tests)."""
     _hits.clear()

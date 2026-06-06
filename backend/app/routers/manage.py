@@ -37,6 +37,7 @@ from app.schemas import (
     ReorderImagesRequest,
     RsvpOut,
     RsvpPage,
+    ViewLog,
 )
 
 router = APIRouter(prefix="/api/public", tags=["public"])
@@ -213,6 +214,12 @@ async def manage_invites(token: str, body: AddInvitesRequest, db: AsyncSession =
 @router.get("/manage/{token}/summary", response_model=EventSummary)
 async def manage_summary(token: str, db: AsyncSession = Depends(get_db)):
     return event_service.summarize(await _load_managed(token, db))
+
+
+@router.get("/manage/{token}/views", response_model=ViewLog)
+async def manage_views(token: str, db: AsyncSession = Depends(get_db)):
+    event = await _load_managed_slim(token, db)
+    return await event_service.fetch_views(event.id, db)
 
 
 @router.put("/manage/{token}/questions", response_model=list[QuestionOut])

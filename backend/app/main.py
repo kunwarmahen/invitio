@@ -78,6 +78,10 @@ async def lifespan(app: FastAPI):
     # Same idempotent pattern for columns added to other tables after they existed.
     other_column_migrations = [
         ("invites", "viewed_at", "TIMESTAMP"),
+        ("invites", "last_viewed_at", "TIMESTAMP"),
+        ("invites", "view_count", "INTEGER NOT NULL DEFAULT 0"),
+        ("invites", "email_opened_at", "TIMESTAMP"),
+        ("invites", "email_open_count", "INTEGER NOT NULL DEFAULT 0"),
         ("event_images", "thumb_path", "VARCHAR"),
     ]
     for table, col, decl in other_column_migrations:

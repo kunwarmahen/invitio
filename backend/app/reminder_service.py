@@ -72,6 +72,7 @@ async def _remind_event(event: Event) -> int:
                 rsvp_url=url,
                 image_url=image_url,
                 nudge=False,
+                view_token=invite_token_by_id.get(rsvp.invite_id),
             ):
                 sent += 1
         except Exception as exc:
@@ -93,6 +94,7 @@ async def _remind_event(event: Event) -> int:
                 rsvp_url=f"{settings.public_base_url}/i/{inv.token}",
                 image_url=image_url,
                 nudge=True,
+                view_token=inv.token,
             ):
                 sent += 1
         except Exception as exc:
