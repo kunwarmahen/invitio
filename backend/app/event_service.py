@@ -226,7 +226,7 @@ async def add_invites(event: Event, body: AddInvitesRequest, db: AsyncSession) -
                     image_url=image_url,
                 )
                 if sent:
-                    inv.sent_at = datetime.datetime.now(datetime.timezone.utc)
+                    inv.sent_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
                     emailed += 1
             except Exception as exc:
                 if settings.debug:

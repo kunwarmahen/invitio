@@ -126,7 +126,7 @@ async def run_reminders_once() -> int:
             sent = await _remind_event(event)
             # Mark reminded regardless of count so we don't re-scan it every tick;
             # an event with no emailable guests is still "handled".
-            event.reminder_sent_at = datetime.datetime.now(datetime.timezone.utc)
+            event.reminder_sent_at = _naive_utcnow()
             reminded += 1
             if settings.debug:
                 print(f"[REMINDER] event {event.id} '{event.title}': {sent} email(s) sent")

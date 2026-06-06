@@ -16,7 +16,10 @@ from app.database import Base
 
 
 def _utcnow() -> datetime.datetime:
-    return datetime.datetime.now(datetime.timezone.utc)
+    # Naive UTC: the DateTime columns are TIMESTAMP WITHOUT TIME ZONE, and
+    # Postgres/asyncpg rejects tz-aware values for them. The whole app stores
+    # naive UTC (see schemas._to_naive_utc and reminder_service._naive_utcnow).
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 
 
 class User(Base):

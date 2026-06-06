@@ -114,7 +114,7 @@ async def public_invite(token: str, db: AsyncSession = Depends(get_db)):
     if invite:
         # Stamp the first open so the host can see who has looked at their invite.
         if invite.viewed_at is None:
-            invite.viewed_at = datetime.datetime.now(datetime.timezone.utc)
+            invite.viewed_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
             await db.commit()
         existing = (
             await db.execute(
