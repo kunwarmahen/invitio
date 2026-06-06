@@ -1,4 +1,4 @@
-import datetime
+import asyncio
 import html
 import os
 import re
@@ -15,6 +15,7 @@ from sqlalchemy import select, text
 from app.config import settings
 from app.database import AsyncSessionLocal, Base, engine
 from app.models import Event, Invite
+from app import reminder_service
 from app.routers import auth, events, manage, rsvp
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -50,6 +51,7 @@ async def lifespan(app: FastAPI):
         ("host_email", "VARCHAR"),
         ("manage_token", "VARCHAR"),
         ("image_fit", "VARCHAR NOT NULL DEFAULT 'contain'"),
+        ("reminder_sent_at", "TIMESTAMP"),
     ]
     for col, decl in event_column_migrations:
         try:
@@ -67,10 +69,23 @@ async def lifespan(app: FastAPI):
     print(f"  Upload dir:   {settings.upload_dir}")
     print(f"  Public URL:   {settings.public_base_url}")
     print(f"  Email:        {'configured' if settings.gmail_app_password else 'disabled (links only)'}")
+    print(f"  Reminders:    {'on' if reminder_service.should_run() else 'off'}")
     print(f"  Build:        {BUILD_VERSION}")
     print("=" * 56)
+
+    reminder_task: asyncio.Task | None = None
+    if reminder_service.should_run():
+        reminder_task = asyncio.create_task(reminder_service.reminder_loop())
+
     yield
+
     print("[SHUTDOWN] invitio shutting down")
+    if reminder_task:
+        reminder_task.cancel()
+        try:
+            await reminder_task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(title="invitio API", lifespan=lifespan)

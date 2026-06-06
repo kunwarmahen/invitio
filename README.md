@@ -31,6 +31,10 @@ reverse proxy.
   iMessage/WhatsApp/Facebook/Slack unfurls with the actual invite.
 - **RSVP without login** — yes / maybe / no, party size (+1s), and a note.
   Re-submitting updates the existing response instead of duplicating it.
+- **Host RSVP notifications** — the host gets an email the moment a guest
+  responds (works for both account and quick-create events).
+- **Reminder emails** — a background loop emails a reminder to "yes" guests and
+  nudges non-responders before each event (once per event; configurable window).
 - **Add to Calendar** — guests get Google Calendar + `.ics` (Apple/Outlook)
   buttons on the invite and after RSVPing yes.
 - **Dashboard** — response counts, head count, full guest + response list.

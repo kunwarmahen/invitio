@@ -37,5 +37,13 @@ class Settings(BaseSettings):
     gmail_app_password: str = ""  # 16-char Google App Password (NOT your login password)
     email_from_name: str = "invitio"
 
+    # Reminder emails. A background loop (started only when email is configured)
+    # periodically finds events starting within `reminder_window_hours` and emails
+    # a reminder to "yes" guests plus a nudge to anyone who hasn't responded.
+    # Each event is reminded at most once. Set reminders_enabled=False to disable.
+    reminders_enabled: bool = True
+    reminder_window_hours: int = 24
+    reminder_check_interval_minutes: int = 60
+
 
 settings = Settings()

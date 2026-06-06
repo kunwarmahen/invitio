@@ -56,6 +56,10 @@ class Event(Base):
     # Secret token that grants management of an account-less event (/m/<token>).
     manage_token: Mapped[str | None] = mapped_column(String, unique=True, index=True, nullable=True)
 
+    # Set once the pre-event reminder/nudge batch has been sent, so the reminder
+    # loop emails each event at most once.
+    reminder_sent_at: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
+
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=_utcnow)
 
     host: Mapped["User"] = relationship(back_populates="events")

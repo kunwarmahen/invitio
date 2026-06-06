@@ -100,6 +100,132 @@ async def send_invite_email(
     return True
 
 
+_STATUS_LABEL = {"yes": "is coming 🎉", "no": "can't make it", "maybe": "might come"}
+
+
+async def send_host_rsvp_notification(
+    to_email: str,
+    host_name: str,
+    event_title: str,
+    guest_name: str,
+    status: str,
+    party_size: int,
+    message: str,
+    manage_url: str | None,
+    updated: bool,
+) -> bool:
+    """Notify the host that a guest responded. Returns False (no-op) when Gmail
+    isn't configured."""
+    if not email_configured():
+        return False
+
+    label = _STATUS_LABEL.get(status, status)
+    safe_guest = escape(guest_name or "A guest")
+    safe_title = escape(event_title)
+    verb = "updated their RSVP" if updated else "responded"
+    party = f" (party of {party_size})" if status == "yes" and party_size > 1 else ""
+
+    note_html = (
+        f"<p style='margin:14px 0;padding:12px 14px;background:#f5f3ff;border-radius:8px;"
+        f"color:#333'>“{escape(message)}”</p>"
+        if message else ""
+    )
+    manage_html = (
+        f"<p style='margin:18px 0'><a href='{escape(manage_url)}' style='display:inline-block;"
+        f"padding:11px 22px;background:#7c3aed;color:#fff;border-radius:10px;"
+        f"text-decoration:none;font-weight:600'>View all responses</a></p>"
+        if manage_url else ""
+    )
+
+    html = (
+        f"<div style='font-family:system-ui,-apple-system,sans-serif;max-width:520px;"
+        f"margin:auto;border:1px solid #eee;border-radius:14px;padding:24px'>"
+        f"<p style='color:#888;font-size:13px;margin:0 0 4px'>New RSVP for</p>"
+        f"<h1 style='margin:0 0 16px;font-size:22px;color:#1a1a2e'>{safe_title}</h1>"
+        f"<p style='font-size:16px;color:#1a1a2e;margin:0'>"
+        f"<b>{safe_guest}</b> {label}{escape(party)}.</p>"
+        f"{note_html}"
+        f"{manage_html}"
+        f"</div>"
+    )
+    text = (
+        f"{guest_name or 'A guest'} {verb} for {event_title}: {label}{party}.\n"
+        + (f"\nMessage: {message}\n" if message else "")
+        + (f"\nSee all responses: {manage_url}\n" if manage_url else "")
+    )
+    subject = f"{guest_name or 'A guest'} {label.split(' ')[0]} — {event_title}"
+    await asyncio.to_thread(_send_via_gmail, to_email, subject, html, text)
+    return True
+
+
+async def send_guest_reminder(
+    to_email: str,
+    guest_name: str,
+    event_title: str,
+    host_name: str,
+    when: datetime.datetime | None,
+    location: str,
+    rsvp_url: str,
+    image_url: str | None,
+    nudge: bool,
+) -> bool:
+    """Pre-event email. `nudge=True` asks a non-responder to RSVP; otherwise it's
+    a "see you soon" reminder for a guest who said yes. No-op without Gmail."""
+    if not email_configured():
+        return False
+
+    greeting = f"Hi {escape(guest_name)}," if guest_name else "Hi there,"
+    when_str = _fmt_when(when)
+    safe_title = escape(event_title)
+    safe_host = escape(host_name or "Your host")
+    safe_loc = escape(location)
+    safe_url = escape(rsvp_url)
+
+    img_html = (
+        f"<img src='{escape(image_url)}' alt='' "
+        f"style='width:100%;max-height:260px;object-fit:cover;border-radius:12px 12px 0 0'>"
+        if image_url else ""
+    )
+    detail_rows = ""
+    if when_str:
+        detail_rows += f"<p style='margin:6px 0'>🗓️ <b>{escape(when_str)}</b></p>"
+    if safe_loc:
+        detail_rows += f"<p style='margin:6px 0'>📍 {safe_loc}</p>"
+
+    if nudge:
+        lead = "is coming up and we haven't heard from you yet — can you make it?"
+        cta = "RSVP now"
+        subject = f"Don't forget to RSVP: {event_title}"
+    else:
+        lead = "is coming up soon. We can't wait to see you!"
+        cta = "View invitation"
+        subject = f"Reminder: {event_title} is coming up"
+
+    html = (
+        f"<div style='font-family:system-ui,-apple-system,sans-serif;max-width:520px;"
+        f"margin:auto;border:1px solid #eee;border-radius:14px;overflow:hidden'>"
+        f"{img_html}"
+        f"<div style='padding:24px'>"
+        f"<p style='color:#888;font-size:13px;margin:0 0 4px'>{safe_host} · reminder</p>"
+        f"<h1 style='margin:0 0 12px;font-size:24px;color:#1a1a2e'>{safe_title}</h1>"
+        f"{detail_rows}"
+        f"<p style='margin:18px 0 6px;color:#444'>{greeting} {safe_title} {lead}</p>"
+        f"<p style='margin:18px 0'><a href='{safe_url}' style='display:inline-block;"
+        f"padding:13px 26px;background:#7c3aed;color:#fff;border-radius:10px;"
+        f"text-decoration:none;font-weight:600'>{cta}</a></p>"
+        f"<p style='color:#999;font-size:12px'>Or paste this link into your browser:<br>{safe_url}</p>"
+        f"</div></div>"
+    )
+    text = (
+        f"{event_title} {lead}\n"
+        + (f"When: {when_str}\n" if when_str else "")
+        + (f"Where: {location}\n" if location else "")
+        + f"\n{cta}: {rsvp_url}\n"
+    )
+    await asyncio.to_thread(_send_via_gmail, to_email, subject, html, text)
+    return True
+
+
 async def send_manage_link_email(to_email: str, event_title: str, manage_url: str, share_url: str) -> bool:
     """Email the host of a no-account event their private management link plus the
     public share link. Returns False (no-op) when Gmail isn't configured."""

@@ -4,11 +4,13 @@ A token in the URL is either an Event.public_token (the shareable link) or an
 Invite.token (a personalized link emailed to one guest). Both resolve to an
 event; an invite token additionally prefills/links the guest's response.
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
+from app.email_service import email_configured, send_host_rsvp_notification
 from app.models import Event, Invite, Rsvp
 from app.schemas import PublicEventOut, RsvpOut, RsvpSubmit
 
@@ -71,7 +73,12 @@ async def public_invite(token: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/rsvp/{token}", response_model=RsvpOut)
-async def submit_rsvp(token: str, body: RsvpSubmit, db: AsyncSession = Depends(get_db)):
+async def submit_rsvp(
+    token: str,
+    body: RsvpSubmit,
+    background: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
     event, invite = await _resolve_token(token, db)
 
     party_size = body.party_size if (event.allow_plus_ones and body.status == "yes") else 1
@@ -113,4 +120,31 @@ async def submit_rsvp(token: str, body: RsvpSubmit, db: AsyncSession = Depends(g
 
     await db.commit()
     await db.refresh(rsvp)
+
+    # Best-effort host notification, sent after the response is returned so the
+    # guest never waits on SMTP. Skipped silently when email isn't configured or
+    # the event has no host email (some quick-create events).
+    if event.host_email and email_configured():
+        manage_url = f"{settings.public_base_url}/m/{event.manage_token}" if event.manage_token else None
+        background.add_task(
+            _notify_host,
+            to_email=event.host_email,
+            host_name=event.host_display_name,
+            event_title=event.title,
+            guest_name=rsvp.guest_name,
+            status=rsvp.status,
+            party_size=rsvp.party_size,
+            message=rsvp.message or "",
+            manage_url=manage_url,
+            updated=bool(existing),
+        )
+
     return RsvpOut.model_validate(rsvp)
+
+
+async def _notify_host(**kwargs) -> None:
+    try:
+        await send_host_rsvp_notification(**kwargs)
+    except Exception as exc:
+        if settings.debug:
+            print(f"[EMAIL] host RSVP notification failed: {exc}")
