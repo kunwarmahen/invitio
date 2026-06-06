@@ -7,8 +7,12 @@
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
     ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 
-  const THEMES = ["violet", "rose", "ocean", "forest", "sunset", "midnight"];
-  const THEME_HEX = { violet:"#7c3aed", rose:"#e11d6b", ocean:"#0ea5e9", forest:"#10b981", sunset:"#f97316", midnight:"#4f46e5" };
+  // Template catalog is shared across pages (see js/themes.js).
+  const THEMES = window.INVITIO_THEMES;
+  const THEME_HEX = window.INVITIO_THEME_HEX;
+  const THEME_MOTIF = window.INVITIO_THEME_MOTIF;
+  const themeSwatch = (t, selected) =>
+    `<div class="sw ${selected ? "sel" : ""}" data-t="${t}" title="${esc((window.INVITIO_THEME_LABEL || {})[t] || t)}" style="background:${THEME_HEX[t]}">${THEME_MOTIF[t] === "✦" ? "" : THEME_MOTIF[t]}</div>`;
 
   const token = location.pathname.split("/").filter(Boolean)[1] || "";
   const justCreated = new URLSearchParams(location.search).has("created");
@@ -92,9 +96,10 @@
 
   function render(e, s) {
     banner(e);
+    const focalPos = `${e.image_focal_x ?? 50}% ${e.image_focal_y ?? 50}%`;
     const img = e.image_path
-      ? `<div class="img" style="background-image:url('${esc(e.image_path)}')"><div class="upload-btn" id="img-btn">📷 Change image</div></div>`
-      : `<div class="img"><div class="ph">🖼️</div><div class="upload-btn" id="img-btn">📷 Upload image</div></div>`;
+      ? `<div class="img" style="background-image:url('${esc(e.image_path)}');background-position:${focalPos}"><div class="upload-btn" id="img-btn">＋ Add photos</div></div>`
+      : `<div class="img"><div class="ph">🖼️</div><div class="upload-btn" id="img-btn">＋ Add photos</div></div>`;
 
     const rsvps = [...e.rsvps].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
     const rsvpRows = rsvps.length ? rsvps.map((r) => rsvpRowHTML(r, e.questions)).join("")
@@ -141,6 +146,10 @@
           <div class="panel"><h4>Who's responded</h4>${rsvpRows}</div>
         </div>
         <div>
+          <div class="panel"><h4>Photos (${e.images.length})</h4>
+            ${galleryGridHTML(e)}
+            <p class="g-sub" style="margin-top:10px">The cover photo is the invite banner${e.image_fit === "cover" ? " — use “Adjust crop” to choose what stays visible" : ""}. Drag to reorder.</p>
+          </div>
           <div class="panel"><h4>Share link</h4>
             <p class="g-sub" style="margin-bottom:10px">Anyone with this link can RSVP.</p>
             <div class="share-box">
@@ -171,6 +180,7 @@
     $("#edit-btn").onclick = () => openEditModal(e);
     $("#del-btn").onclick = () => confirmDelete(e);
     $("#img-btn").onclick = () => $("#hidden-file").click();
+    wireGallery(e);
     $("#add-invites-btn").onclick = () => addInvites();
     $("#broadcast-btn").onclick = () => openBroadcastModal(e);
     $("#edit-questions-btn").onclick = () => openQuestionsModal(e);
@@ -339,8 +349,7 @@
 
   // ── edit modal ──
   function openEditModal(e) {
-    const swatches = THEMES.map((t) =>
-      `<div class="sw ${t === e.theme ? "sel" : ""}" data-t="${t}" style="background:${THEME_HEX[t]}"></div>`).join("");
+    const swatches = THEMES.map((t) => themeSwatch(t, t === e.theme)).join("");
     mountModal(`
       <h3>Edit event</h3>
       <form id="ev-form">
@@ -425,12 +434,113 @@
     };
   }
 
+  // ── photo gallery ──
+  function galleryGridHTML(e) {
+    const imgs = [...(e.images || [])].sort((a, b) => a.position - b.position);
+    const tiles = imgs.map((im) => {
+      const pos = im.is_cover ? `;background-position:${e.image_focal_x ?? 50}% ${e.image_focal_y ?? 50}%` : "";
+      return `<div class="gphoto" draggable="true" data-img="${im.id}" style="background-image:url('${esc(im.path)}')${pos}">
+        ${im.is_cover ? `<span class="cover-badge">Cover</span>` : ""}
+        <div class="gphoto-actions">
+          ${im.is_cover
+            ? `<button data-crop="${im.id}">Adjust crop</button>`
+            : `<button data-cover="${im.id}">Set cover</button>`}
+          <button class="danger" data-delimg="${im.id}">Delete</button>
+        </div>
+      </div>`;
+    }).join("");
+    return `<div class="gallery-grid" id="gallery-grid">${tiles}
+      <div class="gallery-add" id="add-photos"><div class="plus">＋</div>Add photos</div></div>`;
+  }
+
+  function wireGallery(e) {
+    const add = $("#add-photos");
+    if (add) add.onclick = () => $("#hidden-file").click();
+    document.querySelectorAll("[data-cover]").forEach((b) =>
+      b.addEventListener("click", () => setCover(b.dataset.cover)));
+    document.querySelectorAll("[data-delimg]").forEach((b) =>
+      b.addEventListener("click", () => deleteImage(b.dataset.delimg)));
+    document.querySelectorAll("[data-crop]").forEach((b) =>
+      b.addEventListener("click", () => openFocalPicker(e)));
+    wireGalleryDrag();
+  }
+
+  function wireGalleryDrag() {
+    const grid = $("#gallery-grid");
+    if (!grid) return;
+    let dragEl = null;
+    grid.querySelectorAll(".gphoto").forEach((tile) => {
+      tile.addEventListener("dragstart", () => { dragEl = tile; tile.classList.add("dragging"); });
+      tile.addEventListener("dragend", () => { tile.classList.remove("dragging"); saveGalleryOrder(grid); });
+      tile.addEventListener("dragover", (ev) => {
+        ev.preventDefault();
+        if (!dragEl || dragEl === tile) return;
+        const after = ev.clientY > tile.getBoundingClientRect().top + tile.offsetHeight / 2
+          || ev.clientX > tile.getBoundingClientRect().left + tile.offsetWidth / 2;
+        grid.insertBefore(dragEl, after ? tile.nextSibling : tile);
+      });
+    });
+  }
+
+  async function saveGalleryOrder(grid) {
+    const ids = [...grid.querySelectorAll(".gphoto")].map((t) => parseInt(t.dataset.img, 10));
+    try { await api("/images/order", { method: "PUT", body: { ids } }); load(); }
+    catch (err) { toast(err.message, true); load(); }
+  }
+
+  async function setCover(imageId) {
+    try { await api(`/images/${imageId}/cover`, { method: "POST" }); toast("Cover updated"); load(); }
+    catch (err) { toast(err.message, true); }
+  }
+
+  async function deleteImage(imageId) {
+    try { await api(`/images/${imageId}`, { method: "DELETE" }); toast("Photo removed"); load(); }
+    catch (err) { toast(err.message, true); }
+  }
+
+  function openFocalPicker(e) {
+    let fx = e.image_focal_x ?? 50, fy = e.image_focal_y ?? 50;
+    mountModal(`
+      <h3>Adjust crop</h3>
+      <p class="g-sub" style="margin-bottom:14px">Drag the dot to choose what stays in view when the cover photo is cropped.${e.image_fit === "cover" ? "" : " (This event currently shows the full image — switch off “Show the full image” in Edit to crop.)"}</p>
+      <div class="focal-stage" id="focal-stage" style="background-image:url('${esc(e.image_path)}');background-position:${fx}% ${fy}%">
+        <div class="focal-dot" id="focal-dot" style="left:${fx}%;top:${fy}%"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-line" data-close>Cancel</button>
+        <button class="btn btn-primary" id="focal-save">Save crop</button>
+      </div>`);
+    const stage = $("#focal-stage"), dot = $("#focal-dot");
+    const place = (ev) => {
+      const r = stage.getBoundingClientRect();
+      const cx = (ev.touches ? ev.touches[0].clientX : ev.clientX);
+      const cy = (ev.touches ? ev.touches[0].clientY : ev.clientY);
+      fx = Math.max(0, Math.min(100, ((cx - r.left) / r.width) * 100));
+      fy = Math.max(0, Math.min(100, ((cy - r.top) / r.height) * 100));
+      dot.style.left = fx + "%"; dot.style.top = fy + "%";
+      stage.style.backgroundPosition = `${fx}% ${fy}%`;
+    };
+    let dragging = false;
+    stage.addEventListener("pointerdown", (ev) => { dragging = true; stage.setPointerCapture(ev.pointerId); place(ev); });
+    stage.addEventListener("pointermove", (ev) => { if (dragging) place(ev); });
+    stage.addEventListener("pointerup", () => { dragging = false; });
+    $("#focal-save").addEventListener("click", async () => {
+      const btn = $("#focal-save"); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+      try {
+        await api("", { method: "PUT", body: {
+          image_focal_x: Math.round(fx * 10) / 10, image_focal_y: Math.round(fy * 10) / 10,
+        }});
+        closeModal(); toast("Crop saved"); load();
+      } catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = "Save crop"; }
+    });
+  }
+
   // ── image upload ──
   $("#hidden-file").addEventListener("change", async (e) => {
-    const file = e.target.files[0]; if (!file) return;
-    const fd = new FormData(); fd.append("file", file);
-    toast("Uploading image…");
-    try { await api("/image", { method: "POST", form: fd }); toast("Image updated"); load(); }
+    const files = [...e.target.files]; if (!files.length) return;
+    const fd = new FormData(); files.forEach((f) => fd.append("files", f));
+    toast(files.length > 1 ? `Uploading ${files.length} photos…` : "Uploading photo…");
+    try { await api("/images", { method: "POST", form: fd }); toast("Photos updated"); load(); }
     catch (err) { toast(err.message, true); }
     finally { e.target.value = ""; }
   });

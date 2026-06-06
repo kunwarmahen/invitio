@@ -50,10 +50,19 @@ class Event(Base):
     timezone: Mapped[str | None] = mapped_column(String, nullable=True)
     host_display_name: Mapped[str] = mapped_column(String, default="")
     host_email: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Denormalized mirror of the cover EventImage's path (kept in sync by
+    # event_service._sync_cover). The image gallery lives in `event_images`;
+    # this column stays so the OG-tag/email/envelope/thumbnail read-paths keep
+    # working with a single cheap field. Null when the event has no images.
     image_path: Mapped[str | None] = mapped_column(String, nullable=True)
     # How the invite image is displayed: "contain" (default) shows the whole
     # image over a blurred backdrop; "cover" crops it to fill the hero.
     image_fit: Mapped[str] = mapped_column(String, default="contain")
+    # Focal point of the cover image (percent, 0-100) used when image_fit="cover"
+    # so the crop keeps the chosen subject visible instead of dead-centering.
+    # Tied to whichever image is the cover; reset to 50/50 when the cover changes.
+    image_focal_x: Mapped[float] = mapped_column(default=50.0)
+    image_focal_y: Mapped[float] = mapped_column(default=50.0)
     theme: Mapped[str] = mapped_column(String, default="violet")
     allow_plus_ones: Mapped[bool] = mapped_column(Boolean, default=True)
     # Optional public guest wall: a well-wishes board and/or a "who's coming"
@@ -88,6 +97,11 @@ class Event(Base):
     cohosts: Mapped[list["EventCohost"]] = relationship(
         back_populates="event", cascade="all, delete-orphan"
     )
+    images: Mapped[list["EventImage"]] = relationship(
+        back_populates="event",
+        cascade="all, delete-orphan",
+        order_by="EventImage.position",
+    )
 
 
 class Invite(Base):
@@ -103,6 +117,22 @@ class Invite(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=_utcnow)
 
     event: Mapped["Event"] = relationship(back_populates="invites")
+
+
+class EventImage(Base):
+    """One photo in an event's gallery. Exactly one row per event is the cover
+    (`is_cover`), which is mirrored into `Event.image_path`. `position` orders the
+    gallery strip on the invite page."""
+    __tablename__ = "event_images"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), index=True, nullable=False)
+    path: Mapped[str] = mapped_column(String, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    is_cover: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=_utcnow)
+
+    event: Mapped["Event"] = relationship(back_populates="images")
 
 
 class Rsvp(Base):

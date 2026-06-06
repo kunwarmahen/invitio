@@ -15,6 +15,7 @@ from app.database import get_db
 from app.email_service import email_configured, send_host_rsvp_notification
 from app.models import Event, Invite, Rsvp, WallPost
 from app.schemas import (
+    EventImageOut,
     PublicEventOut,
     QuestionOut,
     RsvpOut,
@@ -30,6 +31,7 @@ _WITH_PUBLIC = (
     selectinload(Event.questions),
     selectinload(Event.wall_posts),
     selectinload(Event.rsvps),
+    selectinload(Event.images),
 )
 
 
@@ -79,9 +81,12 @@ def _public_event(event: Event, invite: Invite | None, existing: Rsvp | None) ->
         host_display_name=event.host_display_name,
         image_path=event.image_path,
         image_fit=event.image_fit,
+        image_focal_x=event.image_focal_x,
+        image_focal_y=event.image_focal_y,
         theme=event.theme,
         allow_plus_ones=event.allow_plus_ones,
         public_token=event.public_token,
+        images=[EventImageOut.model_validate(i) for i in event.images],
         questions=[QuestionOut.model_validate(q) for q in event.questions],
         wall_enabled=event.wall_enabled,
         guestlist_public=event.guestlist_public,

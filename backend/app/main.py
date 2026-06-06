@@ -14,7 +14,7 @@ from sqlalchemy import select, text
 
 from app.config import settings
 from app.database import AsyncSessionLocal, Base, engine
-from app.models import Event, Invite
+from app.models import Event, EventImage, Invite
 from app import reminder_service
 from app.routers import ai, auth, events, manage, rsvp
 
@@ -55,6 +55,8 @@ async def lifespan(app: FastAPI):
         ("timezone", "VARCHAR"),
         ("wall_enabled", "BOOLEAN NOT NULL DEFAULT false"),
         ("guestlist_public", "BOOLEAN NOT NULL DEFAULT false"),
+        ("image_focal_x", "FLOAT NOT NULL DEFAULT 50"),
+        ("image_focal_y", "FLOAT NOT NULL DEFAULT 50"),
     ]
     for col, decl in event_column_migrations:
         try:
@@ -63,6 +65,26 @@ async def lifespan(app: FastAPI):
             print(f"[MIGRATION] Added events.{col}")
         except Exception:
             pass  # column already exists
+
+    # Backfill the gallery for events created before event_images existed: each
+    # event with a cover path but no rows gets one cover image. Idempotent.
+    try:
+        async with AsyncSessionLocal() as db:
+            with_images = set((await db.execute(select(EventImage.event_id))).scalars().all())
+            legacy = (
+                await db.execute(select(Event).where(Event.image_path.is_not(None)))
+            ).scalars().all()
+            added = 0
+            for ev in legacy:
+                if ev.id in with_images:
+                    continue
+                db.add(EventImage(event_id=ev.id, path=ev.image_path, position=0, is_cover=True))
+                added += 1
+            if added:
+                await db.commit()
+                print(f"[MIGRATION] Backfilled {added} cover image(s) into event_images")
+    except Exception as exc:
+        print(f"[MIGRATION] image backfill skipped: {exc}")
     print("=" * 56)
     print("  invitio API")
     print("=" * 56)

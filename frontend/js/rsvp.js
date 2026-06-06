@@ -15,6 +15,10 @@
   let event = null;
   let chosenStatus = null;
 
+  // Decorative motif for the event's template (e.g. 🎂 for birthday), used on the
+  // envelope and the empty-image placeholder. Falls back to ✦.
+  const motif = () => (window.invitioMotif ? window.invitioMotif(event && event.theme) : "✦");
+
   let toastTimer;
   function toast(msg, isErr = false) {
     const el = $("#toast");
@@ -133,19 +137,19 @@
          <div class="el-overlay"><div class="el-title">${esc(e.title)}</div>
            <div class="el-host">${esc(e.host_display_name ? e.host_display_name + " invites you" : "You're invited")}</div></div>`
       : `<div class="el-text">
-           <div class="el-mark">✦</div>
+           <div class="el-mark">${motif()}</div>
            <div class="el-host">${esc(e.host_display_name || "You're")} invites you to</div>
            <div class="el-title">${esc(e.title)}</div>
          </div>`;
     $("#rsvp-root").innerHTML = `
       <div class="env-stage" id="env-stage">
-        <div class="env-prompt">✦ You're invited <span class="tap">· tap to open</span></div>
+        <div class="env-prompt">${motif()} You're invited <span class="tap">· tap to open</span></div>
         <div class="envelope${e.image_path ? " has-photo" : ""}" id="envelope" role="button" tabindex="0" aria-label="Open invitation">
           <div class="env-back"></div>
           <div class="env-letter">${letterInner}</div>
           <div class="env-pocket"></div>
           <div class="env-flap"></div>
-          <div class="env-seal">✦</div>
+          <div class="env-seal">${motif()}</div>
         </div>
       </div>`;
     const env = $("#envelope");
@@ -166,7 +170,7 @@
   }
 
   function heroHTML(e) {
-    if (!e.image_path) return `<div class="invite-hero"><div class="ph">🎉</div></div>`;
+    if (!e.image_path) return `<div class="invite-hero"><div class="ph">${motif()}</div></div>`;
     const url = esc(e.image_path);
     if (e.image_fit === "contain") {
       // Whole image, height-capped over a blurred backdrop; tap to enlarge.
@@ -174,21 +178,68 @@
         <img class="hero-img" src="${url}" alt="${esc(e.title)}">
         <div class="zoom-hint">⤢ Tap to enlarge</div></div>`;
     }
-    return `<div class="invite-hero zoomable" id="hero" style="background-image:url('${url}')">
+    // Cover: crop to fill, positioned at the host's chosen focal point so the
+    // subject stays visible.
+    const pos = `${e.image_focal_x ?? 50}% ${e.image_focal_y ?? 50}%`;
+    return `<div class="invite-hero zoomable" id="hero" style="background-image:url('${url}');background-position:${pos}">
       <div class="zoom-hint">⤢ View full image</div></div>`;
   }
 
-  function openLightbox() {
-    if (!event.image_path) return;
+  // All gallery images (cover first), used by the lightbox carousel.
+  function galleryImages(e) {
+    const imgs = (e.images || []).slice().sort((a, b) => (b.is_cover - a.is_cover) || (a.position - b.position));
+    if (imgs.length) return imgs.map((i) => i.path);
+    return e.image_path ? [e.image_path] : [];
+  }
+
+  // Non-cover photos shown as a tappable strip under the invite body.
+  function galleryStripHTML(e) {
+    const extras = (e.images || []).filter((i) => !i.is_cover)
+      .sort((a, b) => a.position - b.position);
+    if (!extras.length) return "";
+    const thumbs = extras.map((i) => {
+      const all = galleryImages(e);
+      const idx = all.indexOf(i.path);
+      return `<div class="gthumb" data-gidx="${idx}" style="background-image:url('${esc(i.path)}')"></div>`;
+    }).join("");
+    return `<div class="wall-section"><h3 style="font-size:18px;margin:0 0 10px">Photos</h3>
+      <div class="gallery-strip" id="gallery-strip">${thumbs}</div></div>`;
+  }
+
+  function openLightbox(startIndex = 0) {
+    const imgs = galleryImages(event);
+    if (!imgs.length) return;
+    let i = Math.max(0, Math.min(startIndex, imgs.length - 1));
+    const multi = imgs.length > 1;
     const lb = document.createElement("div");
     lb.className = "lightbox";
-    lb.innerHTML = `<button class="lb-close" aria-label="Close">×</button><img src="${esc(event.image_path)}" alt="${esc(event.title)}">`;
-    const close = () => lb.remove();
-    lb.addEventListener("click", close);
-    document.body.appendChild(lb);
-    document.addEventListener("keydown", function esc2(ev) {
-      if (ev.key === "Escape") { close(); document.removeEventListener("keydown", esc2); }
+    lb.innerHTML = `<button class="lb-close" aria-label="Close">×</button>
+      ${multi ? `<button class="lb-nav prev" aria-label="Previous">‹</button>
+                 <button class="lb-nav next" aria-label="Next">›</button>` : ""}
+      <img src="${esc(imgs[i])}" alt="${esc(event.title)}">
+      ${multi ? `<div class="lb-count"></div>` : ""}`;
+    const imgEl = lb.querySelector("img");
+    const countEl = lb.querySelector(".lb-count");
+    const show = (n) => {
+      i = (n + imgs.length) % imgs.length;
+      imgEl.src = imgs[i];
+      if (countEl) countEl.textContent = `${i + 1} / ${imgs.length}`;
+    };
+    if (multi) show(i);
+    const close = () => { lb.remove(); document.removeEventListener("keydown", onKey); };
+    function onKey(ev) {
+      if (ev.key === "Escape") close();
+      else if (multi && ev.key === "ArrowLeft") show(i - 1);
+      else if (multi && ev.key === "ArrowRight") show(i + 1);
+    }
+    lb.addEventListener("click", (ev) => {
+      if (ev.target.classList.contains("lb-nav")) {
+        ev.stopPropagation();
+        show(i + (ev.target.classList.contains("next") ? 1 : -1));
+      } else { close(); }
     });
+    document.body.appendChild(lb);
+    document.addEventListener("keydown", onKey);
   }
 
   // ── Custom host questions ─────────────────────────────────────────────────
@@ -325,6 +376,7 @@
             <button class="btn btn-primary" id="rsvp-submit" style="width:100%;font-size:16px;padding:15px">
               ${existing ? "Update my RSVP" : "Send RSVP"}</button>
           </div>
+          ${galleryStripHTML(e)}
           ${comingHTML(e)}
           ${wallHTML(e)}
         </div>
@@ -353,7 +405,9 @@
     if (wallBtn) wallBtn.addEventListener("click", submitWallPost);
     wireCalendar();
     const heroEl = $("#hero");
-    if (heroEl && event.image_path) heroEl.addEventListener("click", openLightbox);
+    if (heroEl && event.image_path) heroEl.addEventListener("click", () => openLightbox(0));
+    document.querySelectorAll("#gallery-strip .gthumb").forEach((t) =>
+      t.addEventListener("click", () => openLightbox(parseInt(t.dataset.gidx, 10) || 0)));
   }
 
   async function submit() {

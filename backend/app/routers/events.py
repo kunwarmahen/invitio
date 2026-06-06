@@ -24,6 +24,7 @@ from app.schemas import (
     InviteOut,
     QuestionOut,
     QuestionsUpdate,
+    ReorderImagesRequest,
 )
 
 router = APIRouter(prefix="/api/events", tags=["events"])
@@ -50,6 +51,7 @@ async def _load_event(event_id: int, user: User, db: AsyncSession, *, owner_only
                 selectinload(Event.questions),
                 selectinload(Event.wall_posts),
                 selectinload(Event.cohosts).selectinload(EventCohost.user),
+                selectinload(Event.images),
             )
         )
     ).scalar_one_or_none()
@@ -132,6 +134,32 @@ async def upload_image(event_id: int, file: UploadFile = File(...), user: User =
     event = await _load_event(event_id, user, db)
     await event_service.save_image(event, file, db)
     return EventOut.model_validate(event)
+
+
+@router.post("/{event_id}/images", response_model=EventDetail)
+async def add_images(event_id: int, files: list[UploadFile] = File(...), user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    event = await _load_event(event_id, user, db)
+    await event_service.add_images(event, files, db)
+    return _detail(event, user)
+
+
+@router.post("/{event_id}/images/{image_id}/cover", response_model=EventOut)
+async def set_cover_image(event_id: int, image_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    event = await _load_event(event_id, user, db)
+    await event_service.set_cover(event, image_id, db)
+    return EventOut.model_validate(event)
+
+
+@router.put("/{event_id}/images/order", status_code=status.HTTP_204_NO_CONTENT)
+async def reorder_images(event_id: int, body: ReorderImagesRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    event = await _load_event(event_id, user, db)
+    await event_service.reorder_images(event, body.ids, db)
+
+
+@router.delete("/{event_id}/images/{image_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_image(event_id: int, image_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    event = await _load_event(event_id, user, db)
+    await event_service.delete_image(event, image_id, db)
 
 
 @router.post("/{event_id}/invites", response_model=AddInvitesResult)

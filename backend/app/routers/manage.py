@@ -33,6 +33,7 @@ from app.schemas import (
     QuestionsUpdate,
     QuickCreate,
     QuickCreateResult,
+    ReorderImagesRequest,
 )
 
 router = APIRouter(prefix="/api/public", tags=["public"])
@@ -49,6 +50,7 @@ async def _load_managed(token: str, db: AsyncSession) -> Event:
                 selectinload(Event.questions),
                 selectinload(Event.wall_posts),
                 selectinload(Event.cohosts).selectinload(EventCohost.user),
+                selectinload(Event.images),
             )
         )
     ).scalar_one_or_none()
@@ -124,6 +126,32 @@ async def manage_image(token: str, file: UploadFile = File(...), db: AsyncSessio
     event = await _load_managed(token, db)
     await event_service.save_image(event, file, db)
     return EventOut.model_validate(event)
+
+
+@router.post("/manage/{token}/images", response_model=EventDetail)
+async def manage_add_images(token: str, files: list[UploadFile] = File(...), db: AsyncSession = Depends(get_db)):
+    event = await _load_managed(token, db)
+    await event_service.add_images(event, files, db)
+    return EventDetail.model_validate(event)
+
+
+@router.post("/manage/{token}/images/{image_id}/cover", response_model=EventOut)
+async def manage_set_cover(token: str, image_id: int, db: AsyncSession = Depends(get_db)):
+    event = await _load_managed(token, db)
+    await event_service.set_cover(event, image_id, db)
+    return EventOut.model_validate(event)
+
+
+@router.put("/manage/{token}/images/order", status_code=status.HTTP_204_NO_CONTENT)
+async def manage_reorder_images(token: str, body: ReorderImagesRequest, db: AsyncSession = Depends(get_db)):
+    event = await _load_managed(token, db)
+    await event_service.reorder_images(event, body.ids, db)
+
+
+@router.delete("/manage/{token}/images/{image_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def manage_delete_image(token: str, image_id: int, db: AsyncSession = Depends(get_db)):
+    event = await _load_managed(token, db)
+    await event_service.delete_image(event, image_id, db)
 
 
 @router.post("/manage/{token}/invites", response_model=AddInvitesResult)

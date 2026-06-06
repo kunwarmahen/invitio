@@ -72,6 +72,8 @@ class EventCreate(BaseModel):
     host_display_name: str = ""
     theme: str = "violet"
     image_fit: str = Field(default="contain", pattern="^(cover|contain)$")
+    image_focal_x: float = Field(default=50.0, ge=0, le=100)
+    image_focal_y: float = Field(default=50.0, ge=0, le=100)
     allow_plus_ones: bool = True
     wall_enabled: bool = False
     guestlist_public: bool = False
@@ -87,6 +89,8 @@ class EventUpdate(BaseModel):
     host_display_name: str | None = None
     theme: str | None = None
     image_fit: str | None = Field(default=None, pattern="^(cover|contain)$")
+    image_focal_x: float | None = Field(default=None, ge=0, le=100)
+    image_focal_y: float | None = Field(default=None, ge=0, le=100)
     allow_plus_ones: bool | None = None
     wall_enabled: bool | None = None
     guestlist_public: bool | None = None
@@ -107,6 +111,21 @@ class InviteOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ── Image gallery ─────────────────────────────────────────────────────────────
+class EventImageOut(BaseModel):
+    id: int
+    path: str
+    position: int
+    is_cover: bool
+
+    class Config:
+        from_attributes = True
+
+
+class ReorderImagesRequest(BaseModel):
+    ids: list[int] = []
 
 
 # ── Custom RSVP questions ───────────────────────────────────────────────────
@@ -209,6 +228,8 @@ class EventOut(BaseModel):
     host_display_name: str
     image_path: str | None
     image_fit: str
+    image_focal_x: float = 50.0
+    image_focal_y: float = 50.0
     theme: str
     allow_plus_ones: bool
     wall_enabled: bool
@@ -237,6 +258,7 @@ class EventDetail(EventOut):
     questions: list[QuestionOut] = []
     wall_posts: list[WallPostOut] = []
     cohosts: list[CohostOut] = []
+    images: list[EventImageOut] = []
 
 
 # ── Broadcast ("message all guests") ─────────────────────────────────────────
@@ -319,9 +341,12 @@ class PublicEventOut(BaseModel):
     host_display_name: str
     image_path: str | None
     image_fit: str
+    image_focal_x: float = 50.0
+    image_focal_y: float = 50.0
     theme: str
     allow_plus_ones: bool
     public_token: str
+    images: list[EventImageOut] = []
     questions: list[QuestionOut] = []
     # Guest wall (only populated when the respective toggle is on).
     wall_enabled: bool = False

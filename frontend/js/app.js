@@ -3,8 +3,12 @@
   "use strict";
 
   const TOKEN_KEY = "invitio_token";
-  const THEMES = ["violet", "rose", "ocean", "forest", "sunset", "midnight"];
-  const THEME_HEX = { violet:"#7c3aed", rose:"#e11d6b", ocean:"#0ea5e9", forest:"#10b981", sunset:"#f97316", midnight:"#4f46e5" };
+  // Template catalog is shared across pages (see js/themes.js).
+  const THEMES = window.INVITIO_THEMES;
+  const THEME_HEX = window.INVITIO_THEME_HEX;
+  const THEME_MOTIF = window.INVITIO_THEME_MOTIF;
+  const themeSwatch = (t, selected) =>
+    `<div class="sw ${selected ? "sel" : ""}" data-theme-pick="${t}" title="${esc((window.INVITIO_THEME_LABEL || {})[t] || t)}" style="background:${THEME_HEX[t]}">${THEME_MOTIF[t] === "✦" ? "" : THEME_MOTIF[t]}</div>`;
 
   const $ = (sel, root = document) => root.querySelector(sel);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
@@ -156,7 +160,7 @@
 
   function eventCardHTML(e) {
     const thumb = e.image_path
-      ? `<div class="thumb" style="background-image:url('${esc(e.image_path)}')"></div>`
+      ? `<div class="thumb" style="background-image:url('${esc(e.image_path)}');background-position:${e.image_focal_x ?? 50}% ${e.image_focal_y ?? 50}%"></div>`
       : `<div class="thumb"><div class="ph">🎟️</div></div>`;
     return `<div class="event-card" data-eid="${e.id}">
       ${thumb}
@@ -177,8 +181,7 @@
     const data = ev || { title: "", description: "", location: "", event_date: null, event_end: null,
       host_display_name: me.name || "", theme: "violet", image_fit: "contain", allow_plus_ones: true,
       wall_enabled: false, guestlist_public: false };
-    const swatches = THEMES.map((t) =>
-      `<div class="sw ${t === data.theme ? "sel" : ""}" data-theme-pick="${t}" style="background:${THEME_HEX[t]}"></div>`).join("");
+    const swatches = THEMES.map((t) => themeSwatch(t, t === data.theme)).join("");
 
     mountModal(`
       <h3>${editing ? "Edit event" : "Create event"}</h3>
@@ -295,9 +298,10 @@
   function shareUrl(token) { return `${location.origin}/e/${token}`; }
 
   function renderDetail(e, s) {
+    const focalPos = `${e.image_focal_x ?? 50}% ${e.image_focal_y ?? 50}%`;
     const img = e.image_path
-      ? `<div class="img" style="background-image:url('${esc(e.image_path)}')"><div class="upload-btn" id="img-btn">📷 Change image</div></div>`
-      : `<div class="img"><div class="ph">🖼️</div><div class="upload-btn" id="img-btn">📷 Upload image</div></div>`;
+      ? `<div class="img" style="background-image:url('${esc(e.image_path)}');background-position:${focalPos}"><div class="upload-btn" id="img-btn">＋ Add photos</div></div>`
+      : `<div class="img"><div class="ph">🖼️</div><div class="upload-btn" id="img-btn">＋ Add photos</div></div>`;
 
     const rsvps = [...e.rsvps].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
     const rsvpRows = rsvps.length ? rsvps.map((r) => rsvpRowHTML(r, e.questions)).join("") :
@@ -357,6 +361,11 @@
 
         <div>
           <div class="panel">
+            <h4>Photos (${e.images.length})</h4>
+            ${galleryGridHTML(e)}
+            <p class="g-sub" style="margin-top:10px">The cover photo is the invite banner${e.image_fit === "cover" ? " — use “Adjust crop” to choose what stays visible" : ""}. Drag to reorder.</p>
+          </div>
+          <div class="panel">
             <h4>Share link</h4>
             <p class="g-sub" style="margin-bottom:10px">Anyone with this link can RSVP.</p>
             <div class="share-box">
@@ -398,6 +407,7 @@
     $("#edit-btn").onclick = () => openEventModal(e);
     const delBtn = $("#del-btn"); if (delBtn) delBtn.onclick = () => confirmDelete(e);
     $("#img-btn").onclick = () => triggerUpload(e.id);
+    wireGallery(e);
     $("#add-invites-btn").onclick = () => addInvites(e.id);
     $("#broadcast-btn").onclick = () => openBroadcastModal(e);
     $("#edit-questions-btn").onclick = () => openQuestionsModal(e);
@@ -620,17 +630,125 @@
     };
   }
 
+  // ── photo gallery ──
+  function galleryGridHTML(e) {
+    const imgs = [...(e.images || [])].sort((a, b) => a.position - b.position);
+    const tiles = imgs.map((im) => {
+      const pos = im.is_cover ? `;background-position:${e.image_focal_x ?? 50}% ${e.image_focal_y ?? 50}%` : "";
+      return `<div class="gphoto" draggable="true" data-img="${im.id}" style="background-image:url('${esc(im.path)}')${pos}">
+        ${im.is_cover ? `<span class="cover-badge">Cover</span>` : ""}
+        <div class="gphoto-actions">
+          ${im.is_cover
+            ? `<button data-crop="${im.id}">Adjust crop</button>`
+            : `<button data-cover="${im.id}">Set cover</button>`}
+          <button class="danger" data-delimg="${im.id}">Delete</button>
+        </div>
+      </div>`;
+    }).join("");
+    return `<div class="gallery-grid" id="gallery-grid">${tiles}
+      <div class="gallery-add" id="add-photos"><div class="plus">＋</div>Add photos</div></div>`;
+  }
+
+  function wireGallery(e) {
+    const add = $("#add-photos");
+    if (add) add.onclick = () => triggerUpload(e.id);
+    document.querySelectorAll("[data-cover]").forEach((b) =>
+      b.addEventListener("click", () => setCover(e.id, b.dataset.cover)));
+    document.querySelectorAll("[data-delimg]").forEach((b) =>
+      b.addEventListener("click", () => deleteImage(e.id, b.dataset.delimg)));
+    document.querySelectorAll("[data-crop]").forEach((b) =>
+      b.addEventListener("click", () => openFocalPicker(e)));
+    wireGalleryDrag(e.id);
+  }
+
+  // Drag-and-drop reorder of the gallery tiles.
+  function wireGalleryDrag(eventId) {
+    const grid = $("#gallery-grid");
+    if (!grid) return;
+    let dragEl = null;
+    grid.querySelectorAll(".gphoto").forEach((tile) => {
+      tile.addEventListener("dragstart", () => { dragEl = tile; tile.classList.add("dragging"); });
+      tile.addEventListener("dragend", () => {
+        tile.classList.remove("dragging");
+        grid.querySelectorAll(".drag-over").forEach((t) => t.classList.remove("drag-over"));
+        saveGalleryOrder(eventId, grid);
+      });
+      tile.addEventListener("dragover", (ev) => {
+        ev.preventDefault();
+        if (!dragEl || dragEl === tile) return;
+        const after = ev.clientY > tile.getBoundingClientRect().top + tile.offsetHeight / 2
+          || ev.clientX > tile.getBoundingClientRect().left + tile.offsetWidth / 2;
+        grid.insertBefore(dragEl, after ? tile.nextSibling : tile);
+      });
+    });
+  }
+
+  async function saveGalleryOrder(eventId, grid) {
+    const ids = [...grid.querySelectorAll(".gphoto")].map((t) => parseInt(t.dataset.img, 10));
+    try { await api(`/events/${eventId}/images/order`, { method: "PUT", body: { ids } }); openEvent(eventId); }
+    catch (err) { toast(err.message, true); openEvent(eventId); }
+  }
+
+  async function setCover(eventId, imageId) {
+    try { await api(`/events/${eventId}/images/${imageId}/cover`, { method: "POST" }); toast("Cover updated"); openEvent(eventId); }
+    catch (err) { toast(err.message, true); }
+  }
+
+  async function deleteImage(eventId, imageId) {
+    try { await api(`/events/${eventId}/images/${imageId}`, { method: "DELETE" }); toast("Photo removed"); openEvent(eventId); }
+    catch (err) { toast(err.message, true); }
+  }
+
+  // Focal-point picker: drag the dot to choose what stays visible in cover mode.
+  function openFocalPicker(e) {
+    let fx = e.image_focal_x ?? 50, fy = e.image_focal_y ?? 50;
+    mountModal(`
+      <h3>Adjust crop</h3>
+      <p class="g-sub" style="margin-bottom:14px">Drag the dot to choose what stays in view when the cover photo is cropped.${e.image_fit === "cover" ? "" : " (This event currently shows the full image — switch off “Show the full image” in Edit to crop.)"}</p>
+      <div class="focal-stage" id="focal-stage" style="background-image:url('${esc(e.image_path)}');background-position:${fx}% ${fy}%">
+        <div class="focal-dot" id="focal-dot" style="left:${fx}%;top:${fy}%"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-line" data-close>Cancel</button>
+        <button class="btn btn-primary" id="focal-save">Save crop</button>
+      </div>`);
+    const stage = $("#focal-stage"), dot = $("#focal-dot");
+    const place = (ev) => {
+      const r = stage.getBoundingClientRect();
+      const cx = (ev.touches ? ev.touches[0].clientX : ev.clientX);
+      const cy = (ev.touches ? ev.touches[0].clientY : ev.clientY);
+      fx = Math.max(0, Math.min(100, ((cx - r.left) / r.width) * 100));
+      fy = Math.max(0, Math.min(100, ((cy - r.top) / r.height) * 100));
+      dot.style.left = fx + "%"; dot.style.top = fy + "%";
+      stage.style.backgroundPosition = `${fx}% ${fy}%`;
+    };
+    let dragging = false;
+    stage.addEventListener("pointerdown", (ev) => { dragging = true; stage.setPointerCapture(ev.pointerId); place(ev); });
+    stage.addEventListener("pointermove", (ev) => { if (dragging) place(ev); });
+    stage.addEventListener("pointerup", () => { dragging = false; });
+    $("#focal-save").addEventListener("click", async () => {
+      const btn = $("#focal-save"); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+      try {
+        await api(`/events/${e.id}`, { method: "PUT", body: {
+          image_focal_x: Math.round(fx * 10) / 10, image_focal_y: Math.round(fy * 10) / 10,
+        }});
+        closeModal(); toast("Crop saved"); openEvent(e.id);
+      } catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = "Save crop"; }
+    });
+  }
+
   // ── image upload ──
   let uploadTargetId = null;
   function triggerUpload(eventId) { uploadTargetId = eventId; $("#hidden-file").click(); }
   $("#hidden-file").addEventListener("change", async (e) => {
-    const file = e.target.files[0];
-    if (!file || !uploadTargetId) return;
-    const fd = new FormData(); fd.append("file", file);
-    toast("Uploading image…");
+    const files = [...e.target.files];
+    if (!files.length || !uploadTargetId) return;
+    const fd = new FormData();
+    files.forEach((f) => fd.append("files", f));
+    toast(files.length > 1 ? `Uploading ${files.length} photos…` : "Uploading photo…");
     try {
-      await api(`/events/${uploadTargetId}/image`, { method: "POST", form: fd });
-      toast("Image updated");
+      await api(`/events/${uploadTargetId}/images`, { method: "POST", form: fd });
+      toast("Photos updated");
       openEvent(uploadTargetId);
     } catch (err) { toast(err.message, true); }
     finally { e.target.value = ""; uploadTargetId = null; }

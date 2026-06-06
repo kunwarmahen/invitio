@@ -19,6 +19,14 @@ reverse proxy.
 - **Create events** — title, start/end date/time, location, description, host
   name, theme, and a **custom uploaded hero image**, shown **whole/uncropped by
   default** (over a blurred backdrop); a toggle switches to crop-to-fill.
+- **Templates** — pick from plain accent palettes or **seasonal/occasion
+  templates** (Birthday, Wedding, Christmas, Halloween, Baby, New Year, Autumn,
+  Spring), each with its own palette and decorative motif on the envelope.
+- **Photo gallery** — add **multiple photos** per event, drag to reorder, and
+  choose any one as the cover; extra photos show as a strip on the invite with a
+  full-screen lightbox carousel.
+- **Focal-point crop** — in crop-to-fill mode, drag a point on the cover photo to
+  choose what stays visible in the hero, cards, and thumbnails.
 - **Punchbowl-style envelope reveal** — guests land on a sealed, themed envelope
   that opens and slides *your invitation image* out, then shows the full invite
   (plays once per visit; honours reduced-motion).
@@ -141,7 +149,9 @@ Interactive docs at `/docs` when running. Summary:
 | GET  | `/api/auth/me` | ✓ | current user |
 | POST/GET | `/api/events` | ✓ | create / list events |
 | GET/PUT/DELETE | `/api/events/{id}` | ✓ | manage one event |
-| POST | `/api/events/{id}/image` | ✓ | upload hero image |
+| POST | `/api/events/{id}/image` | ✓ | upload hero image (sets cover) |
+| POST/DELETE | `/api/events/{id}/images[/{img}]` | ✓ | add photos / delete one |
+| POST/PUT | `/api/events/{id}/images/{img}/cover` · `/images/order` | ✓ | set cover / reorder |
 | POST | `/api/events/{id}/invites` | ✓ | add guests + email links |
 | GET  | `/api/events/{id}/summary` | ✓ | response counts |
 | GET  | `/api/public/event/{token}` | — | event by share link |

@@ -13,7 +13,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import new_token
 from app.config import settings
 from app.email_service import email_configured, send_broadcast_email, send_invite_email
-from app.models import Event, EventCohost, EventQuestion, Invite, Rsvp, RsvpAnswer, User, WallPost
+from app.models import (
+    Event,
+    EventCohost,
+    EventImage,
+    EventQuestion,
+    Invite,
+    Rsvp,
+    RsvpAnswer,
+    User,
+    WallPost,
+)
 from app.schemas import (
     AddInvitesRequest,
     AnswerIn,
@@ -45,39 +55,125 @@ def _remove_image_file(image_path: str | None) -> None:
         pass
 
 
-async def _write_image(event: Event, data: bytes, ext: str, db: AsyncSession) -> None:
-    """Persist image bytes to the uploads dir and point the event at them, dropping
-    any previous file. Shared by direct uploads and AI-generated images."""
+def _save_bytes(data: bytes, ext: str) -> str:
+    """Validate size, write the bytes to the uploads dir, return the public path."""
     if len(data) > settings.max_upload_mb * 1024 * 1024:
         raise HTTPException(status_code=400, detail=f"Image too large (max {settings.max_upload_mb} MB)")
     os.makedirs(settings.upload_dir, exist_ok=True)
     fname = f"{uuid.uuid4().hex}{ext}"
     with open(os.path.join(settings.upload_dir, fname), "wb") as fh:
         fh.write(data)
+    return f"/uploads/{fname}"
 
-    _remove_image_file(event.image_path)  # drop the previous one
-    event.image_path = f"/uploads/{fname}"
+
+def _cover_image(event: Event) -> EventImage | None:
+    """The event's cover image: the one flagged `is_cover`, else the first by
+    position, else None."""
+    if not event.images:
+        return None
+    for img in event.images:
+        if img.is_cover:
+            return img
+    return min(event.images, key=lambda i: i.position)
+
+
+def _sync_cover(event: Event) -> None:
+    """Mirror the cover image's path into `event.image_path` (the denormalized
+    field every legacy read-path uses). Clears it when no images remain. Caller
+    commits."""
+    cover = _cover_image(event)
+    event.image_path = cover.path if cover else None
+
+
+async def _add_image(event: Event, data: bytes, ext: str, db: AsyncSession, *, make_cover: bool) -> EventImage:
+    """Persist bytes as a new gallery image appended after the current last one.
+    Becomes the cover when asked, or automatically if the event had none."""
+    path = _save_bytes(data, ext)
+    next_pos = max((i.position for i in event.images), default=-1) + 1
+    img = EventImage(event_id=event.id, path=path, position=next_pos)
+    db.add(img)
+    event.images.append(img)
+    if make_cover or len(event.images) == 1:
+        for other in event.images:
+            other.is_cover = other is img
+        if make_cover:
+            event.image_focal_x = event.image_focal_y = 50.0
+    _sync_cover(event)
     await db.commit()
-    await db.refresh(event)
+    return img
 
 
 async def save_image(event: Event, file: UploadFile, db: AsyncSession) -> None:
+    """Upload a single image and make it the cover (the "Change image" button)."""
     if file.content_type not in _ALLOWED_IMAGE_TYPES:
         raise HTTPException(status_code=400, detail="Unsupported image type (use JPEG, PNG, WebP, or GIF)")
     data = await file.read()
-    await _write_image(event, data, _EXT.get(file.content_type, ".img"), db)
+    await _add_image(event, data, _EXT.get(file.content_type, ".img"), db, make_cover=True)
+
+
+async def add_images(event: Event, files: list[UploadFile], db: AsyncSession) -> None:
+    """Append one or more images to the gallery. The first becomes the cover only
+    if the event had none."""
+    for file in files:
+        if file.content_type not in _ALLOWED_IMAGE_TYPES:
+            raise HTTPException(status_code=400, detail="Unsupported image type (use JPEG, PNG, WebP, or GIF)")
+        data = await file.read()
+        await _add_image(event, data, _EXT.get(file.content_type, ".img"), db, make_cover=False)
+
+
+def _find_image(event: Event, image_id: int) -> EventImage:
+    for img in event.images:
+        if img.id == image_id:
+            return img
+    raise HTTPException(status_code=404, detail="Image not found")
+
+
+async def set_cover(event: Event, image_id: int, db: AsyncSession) -> None:
+    target = _find_image(event, image_id)
+    for img in event.images:
+        img.is_cover = img is target
+    event.image_focal_x = event.image_focal_y = 50.0  # focal was tuned for the old cover
+    _sync_cover(event)
+    await db.commit()
+
+
+async def delete_image(event: Event, image_id: int, db: AsyncSession) -> None:
+    target = _find_image(event, image_id)
+    was_cover = target.is_cover
+    _remove_image_file(target.path)
+    event.images.remove(target)
+    await db.delete(target)
+    if was_cover:
+        # Promote the next image (lowest position) so the event keeps a cover.
+        remaining = sorted(event.images, key=lambda i: i.position)
+        if remaining:
+            remaining[0].is_cover = True
+    _sync_cover(event)
+    await db.commit()
+
+
+async def reorder_images(event: Event, ordered_ids: list[int], db: AsyncSession) -> None:
+    """Apply gallery order from the submitted id list; any image not listed keeps
+    its relative order after the listed ones."""
+    pos = {img_id: i for i, img_id in enumerate(ordered_ids)}
+    tail = len(ordered_ids)
+    for img in event.images:
+        img.position = pos.get(img.id, tail + img.id)
+    await db.commit()
 
 
 async def generate_event_image(event: Event, extra_prompt: str, db: AsyncSession) -> None:
-    """Generate a hero image from the event details and save it as the event's image."""
+    """Generate a hero image from the event details and save it as the cover."""
     from app import ai_service
     ctx = {"title": event.title, "location": event.location, "theme": event.theme}
     data = await ai_service.generate_image_png(ai_service.image_prompt(ctx, extra_prompt))
-    await _write_image(event, data, ".png", db)
+    await _add_image(event, data, ".png", db, make_cover=True)
 
 
 async def delete_event(event: Event, db: AsyncSession) -> None:
-    _remove_image_file(event.image_path)
+    for img in event.images:
+        _remove_image_file(img.path)
+    _remove_image_file(event.image_path)  # legacy events may predate the gallery
     await db.delete(event)
     await db.commit()
 

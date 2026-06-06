@@ -2,8 +2,12 @@
 (() => {
   "use strict";
   const $ = (s) => document.querySelector(s);
-  const THEMES = ["violet", "rose", "ocean", "forest", "sunset", "midnight"];
-  const THEME_HEX = { violet:"#7c3aed", rose:"#e11d6b", ocean:"#0ea5e9", forest:"#10b981", sunset:"#f97316", midnight:"#4f46e5" };
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+  // Template catalog is shared across pages (see js/themes.js).
+  const THEMES = window.INVITIO_THEMES;
+  const THEME_HEX = window.INVITIO_THEME_HEX;
+  const THEME_MOTIF = window.INVITIO_THEME_MOTIF;
 
   let toastTimer;
   function toast(msg, err = false) {
@@ -13,7 +17,7 @@
 
   let theme = "violet";
   $("#theme-pick").innerHTML = THEMES.map((t) =>
-    `<div class="sw ${t === theme ? "sel" : ""}" data-t="${t}" style="background:${THEME_HEX[t]}"></div>`).join("");
+    `<div class="sw ${t === theme ? "sel" : ""}" data-t="${t}" title="${esc((window.INVITIO_THEME_LABEL || {})[t] || t)}" style="background:${THEME_HEX[t]}">${THEME_MOTIF[t] === "✦" ? "" : THEME_MOTIF[t]}</div>`).join("");
   $("#theme-pick").querySelectorAll("[data-t]").forEach((sw) =>
     sw.addEventListener("click", () => {
       theme = sw.dataset.t;
