@@ -62,4 +62,15 @@
       btn.disabled = false; btn.textContent = "Create event";
     }
   });
+
+  // ── PWA service worker ──
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+    let _reloadingForSW = false;
+    if (navigator.serviceWorker.controller) {
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (_reloadingForSW) return; _reloadingForSW = true; window.location.reload();
+      });
+    }
+  }
 })();

@@ -41,6 +41,7 @@
   }
   function shareUrl(t) { return `${location.origin}/e/${t}`; }
   function manageUrl() { return `${location.origin}/m/${token}`; }
+  const mapsLink = (loc) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc)}`;
 
   // ── api ──
   async function api(path, { method = "GET", body, form } = {}) {
@@ -118,7 +119,7 @@
           <h2>${esc(e.title)}</h2>
           <div class="detail-meta">
             <span>📅 ${esc(fmtDate(e.event_date, e.timezone))}</span>
-            ${e.location ? `<span>📍 ${esc(e.location)}</span>` : ""}
+            ${e.location ? `<span>📍 ${esc(e.location)} · <a href="${esc(mapsLink(e.location))}" target="_blank" rel="noopener">Open in Maps ↗</a></span>` : ""}
             ${e.host_display_name ? `<span>👤 ${esc(e.host_display_name)}</span>` : ""}
           </div>
           ${e.description ? `<p style="color:var(--muted);white-space:pre-wrap">${esc(e.description)}</p>` : ""}
@@ -559,6 +560,19 @@
     } catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = "Send invitations"; }
   }
 
+  // ── dark-mode toggle (cycles system → light → dark; persisted by scheme.js) ──
+  const SCHEME_ICON = { system: "🖥️", light: "☀️", dark: "🌙" };
+  function wireSchemeToggle() {
+    const btn = $("#scheme-btn"); if (!btn || !window.invitioScheme) return;
+    const sync = () => {
+      const pref = window.invitioScheme.get();
+      btn.textContent = SCHEME_ICON[pref] || "🖥️";
+      btn.title = `Theme: ${pref}` + (pref === "system" ? " (follows your device)" : "");
+    };
+    btn.addEventListener("click", () => { window.invitioScheme.cycle(); sync(); });
+    sync();
+  }
+
   // ── modal helpers ──
   function mountModal(html) {
     $("#modal-root").innerHTML = `<div class="modal-bg"><div class="modal">${html}</div></div>`;
@@ -568,5 +582,17 @@
   }
   function closeModal() { $("#modal-root").innerHTML = ""; }
 
+  // ── PWA service worker ──
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+    let _reloadingForSW = false;
+    if (navigator.serviceWorker.controller) {
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (_reloadingForSW) return; _reloadingForSW = true; window.location.reload();
+      });
+    }
+  }
+
+  wireSchemeToggle();
   load();
 })();

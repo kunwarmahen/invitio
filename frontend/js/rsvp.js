@@ -19,6 +19,15 @@
   // envelope and the empty-image placeholder. Falls back to ✦.
   const motif = () => (window.invitioMotif ? window.invitioMotif(event && event.theme) : "✦");
 
+  // ── Location maps (keyless: Google "search" link + embeddable map) ──
+  const mapsLink = (loc) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc)}`;
+  const mapEmbed = (loc) => `https://www.google.com/maps?q=${encodeURIComponent(loc)}&output=embed`;
+  function mapBlockHTML(e) {
+    if (!e.location) return "";
+    return `<iframe class="map-embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade"
+      allowfullscreen title="Map to ${esc(e.location)}" src="${esc(mapEmbed(e.location))}"></iframe>`;
+  }
+
   let toastTimer;
   function toast(msg, isErr = false) {
     const el = $("#toast");
@@ -353,7 +362,9 @@
           <h1 class="invite-title">${esc(e.title)}</h1>
 
           <div class="invite-detail"><span class="ic">📅</span><div><b>When</b><br>${esc(fmtDate(e.event_date))}</div></div>
-          ${e.location ? `<div class="invite-detail"><span class="ic">📍</span><div><b>Where</b><br>${esc(e.location)}</div></div>` : ""}
+          ${e.location ? `<div class="invite-detail"><span class="ic">📍</span><div><b>Where</b><br>${esc(e.location)}
+            <br><a href="${esc(mapsLink(e.location))}" target="_blank" rel="noopener" class="map-link">Open in Maps ↗</a></div></div>` : ""}
+          ${mapBlockHTML(e)}
           ${e.description ? `<p class="invite-desc">${esc(e.description)}</p>` : ""}
           ${calendarHTML()}
 

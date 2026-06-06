@@ -2,13 +2,15 @@
    Warm, editorial invitation aesthetic. Theme accent is swappable per event. */
 :root {
     --accent: #7c3aed;
-    --accent-soft: #ede9fe;
-    --accent-ink: #5b21b6;
     --bg: #faf8ff;
     --surface: #ffffff;
     --ink: #1a1530;
     --muted: #6b6580;
     --line: #ece8f5;
+    --border: #e6e6ef;         /* used by some components via var(--border, …) */
+    --input-bg: #ffffff;
+    --topbar-bg: rgba(255, 255, 255, .85);
+    --hero-ph: #f4f1fb;        /* neutral backdrop behind an image-less / contain hero */
     --ok: #16a34a;
     --no: #dc2626;
     --maybe: #d97706;
@@ -16,23 +18,49 @@
     --shadow: 0 10px 40px -16px rgba(72, 38, 120, 0.35);
     --shadow-sm: 0 2px 12px -4px rgba(72, 38, 120, 0.25);
     --font: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    /* Fallbacks for the html element itself; `body` (below) recomputes these from
+       the live --accent so per-event themes + dark mode adapt automatically. */
+    --accent-soft: #ede9fe;
+    --accent-ink: #5b21b6;
 }
-/* per-event themes (set data-theme on body of rsvp page) */
-[data-theme="violet"] { --accent:#7c3aed; --accent-soft:#ede9fe; --accent-ink:#5b21b6; }
-[data-theme="rose"]   { --accent:#e11d6b; --accent-soft:#ffe4ef; --accent-ink:#9d174d; }
-[data-theme="ocean"]  { --accent:#0ea5e9; --accent-soft:#e0f2fe; --accent-ink:#075985; }
-[data-theme="forest"] { --accent:#10b981; --accent-soft:#d1fae5; --accent-ink:#065f46; }
-[data-theme="sunset"] { --accent:#f97316; --accent-soft:#ffedd5; --accent-ink:#9a3412; }
-[data-theme="midnight"]{ --accent:#4f46e5; --accent-soft:#e0e7ff; --accent-ink:#3730a3; }
-/* seasonal / occasion templates (palette only; motif emoji set in JS) */
-[data-theme="birthday"] { --accent:#db2777; --accent-soft:#fce7f3; --accent-ink:#9d174d; }
-[data-theme="wedding"]  { --accent:#b08968; --accent-soft:#f5ede4; --accent-ink:#7f5539; }
-[data-theme="christmas"]{ --accent:#c0392b; --accent-soft:#e6f4ea; --accent-ink:#7f1d1d; }
-[data-theme="halloween"]{ --accent:#ea580c; --accent-soft:#f5e9d0; --accent-ink:#7c2d12; }
-[data-theme="baby"]     { --accent:#38bdf8; --accent-soft:#e0f2fe; --accent-ink:#0369a1; }
-[data-theme="newyear"]  { --accent:#ca8a04; --accent-soft:#fef9c3; --accent-ink:#713f12; }
-[data-theme="autumn"]   { --accent:#b45309; --accent-soft:#fef3c7; --accent-ink:#7c2d12; }
-[data-theme="spring"]   { --accent:#65a30d; --accent-soft:#ecfccb; --accent-ink:#3f6212; }
+/* per-event themes (set data-theme on body): only the accent differs — the soft
+   tint and ink shade are derived on `body` from the accent + current surface/ink,
+   so every theme works in both light and dark. */
+[data-theme="violet"]   { --accent:#7c3aed; }
+[data-theme="rose"]     { --accent:#e11d6b; }
+[data-theme="ocean"]    { --accent:#0ea5e9; }
+[data-theme="forest"]   { --accent:#10b981; }
+[data-theme="sunset"]   { --accent:#f97316; }
+[data-theme="midnight"] { --accent:#4f46e5; }
+/* seasonal / occasion templates (motif emoji set in JS) */
+[data-theme="birthday"]  { --accent:#db2777; }
+[data-theme="wedding"]   { --accent:#b08968; }
+[data-theme="christmas"] { --accent:#c0392b; }
+[data-theme="halloween"] { --accent:#ea580c; }
+[data-theme="baby"]      { --accent:#38bdf8; }
+[data-theme="newyear"]   { --accent:#ca8a04; }
+[data-theme="autumn"]    { --accent:#b45309; }
+[data-theme="spring"]    { --accent:#65a30d; }
+
+/* Dark scheme — set by scheme.js as <html data-scheme="dark">. Only the neutral
+   tokens flip; accent palettes are unchanged and their soft/ink tints re-derive
+   from the new dark surface/ink below. */
+:root[data-scheme="dark"] {
+    --bg: #14111f;
+    --surface: #1e1a2b;
+    --ink: #ece9f5;
+    --muted: #a39db8;
+    --line: #322c44;
+    --border: #322c44;
+    --input-bg: #272235;
+    --topbar-bg: rgba(20, 17, 31, .85);
+    --hero-ph: #272235;
+    --ok: #4ade80;
+    --no: #f87171;
+    --maybe: #fbbf24;
+    --shadow: 0 12px 44px -16px rgba(0, 0, 0, .6);
+    --shadow-sm: 0 2px 14px -4px rgba(0, 0, 0, .5);
+}
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
@@ -42,6 +70,9 @@ body {
     color: var(--ink);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
+    /* derived per-theme tints, scheme-aware (computed here where --accent lives) */
+    --accent-soft: color-mix(in srgb, var(--accent) 14%, var(--surface));
+    --accent-ink: color-mix(in srgb, var(--accent) 72%, var(--ink));
 }
 a { color: var(--accent); }
 .hidden { display: none !important; }
@@ -67,7 +98,7 @@ a { color: var(--accent); }
 label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 0 6px; }
 input, textarea, select {
     width: 100%; font-family: inherit; font-size: 15px; color: var(--ink);
-    background: #fff; border: 1.5px solid var(--line); border-radius: 12px;
+    background: var(--input-bg); border: 1.5px solid var(--line); border-radius: 12px;
     padding: 12px 14px; transition: border-color .12s;
 }
 input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
@@ -109,7 +140,7 @@ textarea { resize: vertical; min-height: 84px; }
     min-height: 100dvh; display: grid; place-items: center; padding: 24px;
     background:
         radial-gradient(1200px 500px at 20% -10%, var(--accent-soft), transparent),
-        radial-gradient(900px 500px at 100% 0%, #fde6f1, transparent), var(--bg);
+        radial-gradient(900px 500px at 100% 0%, var(--accent-soft), transparent), var(--bg);
 }
 .auth-card {
     width: 100%; max-width: 420px; background: var(--surface);
@@ -127,7 +158,7 @@ textarea { resize: vertical; min-height: 84px; }
 
 /* ── app shell ── */
 .topbar {
-    position: sticky; top: 0; z-index: 30; background: rgba(255,255,255,.85);
+    position: sticky; top: 0; z-index: 30; background: var(--topbar-bg);
     backdrop-filter: blur(12px); border-bottom: 1px solid var(--line);
 }
 .topbar-inner {
@@ -237,7 +268,7 @@ textarea { resize: vertical; min-height: 84px; }
 .status-pick { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 18px; }
 .status-pick button {
     font-family: inherit; font-size: 15px; font-weight: 700; cursor: pointer;
-    padding: 16px 8px; border-radius: 14px; border: 2px solid var(--line); background: #fff;
+    padding: 16px 8px; border-radius: 14px; border: 2px solid var(--line); background: var(--input-bg);
     color: var(--ink); transition: all .12s; display: flex; flex-direction: column; gap: 4px; align-items: center;
 }
 .status-pick button .em { font-size: 22px; }
@@ -256,7 +287,7 @@ textarea { resize: vertical; min-height: 84px; }
    with a soft blurred copy of the image so it reads as intentional. */
 .invite-hero.contain {
     height: auto; min-height: 200px; max-height: 60vh; overflow: hidden;
-    display: grid; place-items: center; position: relative; background: #f4f1fb;
+    display: grid; place-items: center; position: relative; background: var(--hero-ph);
 }
 .invite-hero.contain::before {
     content: ""; position: absolute; inset: 0;
@@ -440,7 +471,7 @@ textarea { resize: vertical; min-height: 84px; }
 /* ── focal-point picker modal ── */
 .focal-stage {
     position: relative; width: 100%; aspect-ratio: 16/9; border-radius: 14px; overflow: hidden;
-    background: #f4f1fb center/cover no-repeat; cursor: crosshair; touch-action: none;
+    background: var(--hero-ph) center/cover no-repeat; cursor: crosshair; touch-action: none;
     box-shadow: inset 0 0 0 1px var(--line);
 }
 .focal-dot {
@@ -466,4 +497,17 @@ textarea { resize: vertical; min-height: 84px; }
 .lightbox .lb-count {
     position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); color: #fff;
     font-size: 13px; font-weight: 600; background: rgba(0,0,0,.45); padding: 4px 12px; border-radius: 999px;
+}
+
+/* ── location map (keyless embed + link) ── */
+.map-embed {
+    width: 100%; height: 220px; border: 0; border-radius: 14px; margin-top: 14px;
+    box-shadow: var(--shadow-sm); background: var(--hero-ph); display: block;
+}
+.map-link { white-space: nowrap; }
+
+/* ── dark-mode toggle (host topbars) ── */
+.scheme-btn {
+    width: 36px; height: 36px; padding: 0; justify-content: center; font-size: 17px;
+    border-radius: 50%; flex: 0 0 auto;
 }

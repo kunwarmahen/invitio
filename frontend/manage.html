@@ -8,12 +8,25 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/style.css?v=1">
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#7c3aed">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#14111f">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="invitio">
+    <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+    <!-- set color scheme before paint (no flash) -->
+    <script src="/static/js/scheme.js?v=1"></script>
 </head>
 <body>
     <div class="topbar">
         <div class="topbar-inner">
             <div class="brand"><span class="dot">✦</span> invitio</div>
-            <a class="btn btn-line btn-sm" href="/" style="text-decoration:none">Host sign in</a>
+            <div style="display:flex;align-items:center;gap:10px">
+                <button class="btn btn-line btn-sm scheme-btn" id="scheme-btn" title="Color theme" aria-label="Toggle color theme">🖥️</button>
+                <a class="btn btn-line btn-sm" href="/" style="text-decoration:none">Host sign in</a>
+            </div>
         </div>
     </div>
     <div class="container">

@@ -59,6 +59,15 @@ reverse proxy.
   buttons on the invite and after RSVPing yes.
 - **Timezone-correct times** — each event captures its timezone, so every guest
   sees the same local time (e.g. "6:00 PM EDT") no matter where they are.
+- **Location map** — when an event has a location, the invite shows an embedded
+  map preview + an "Open in Maps" link (keyless Google Maps; opens the native app
+  on mobile).
+- **Dark mode** — the whole UI (dashboard, manage, invite) adapts to a light or
+  dark scheme; follows the device by default with a 🖥️/☀️/🌙 toggle on the host
+  chrome (persisted).
+- **Installable PWA** — add invitio to your home screen; a service worker caches
+  the app shell so the dashboard loads offline (network-first, so data/invites are
+  never stale).
 - **Dashboard** — response counts, head count, full guest + response list.
 
 ## Tech stack

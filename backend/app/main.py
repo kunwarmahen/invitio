@@ -8,7 +8,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select, text
 
@@ -28,13 +28,20 @@ FRONTEND_DIR = BASE_DIR / "frontend"
 BUILD_VERSION = re.sub(r"[^\w.-]", "", os.getenv("BUILD_VERSION") or str(int(time.time())))
 _PAGE_FILES = ["index.html", "rsvp.html", "quick.html", "manage.html"]
 _pages: dict[str, str] = {}
+# Service worker, served from root with its cache name stamped to the build id so
+# every deploy invalidates the installed PWA's cache. Filled by _load_pages().
+_sw_js: str = ""
 
 
 def _load_pages() -> None:
+    global _sw_js
     for name in _PAGE_FILES:
         path = FRONTEND_DIR / name
         if path.exists():
             _pages[name] = re.sub(r"\?v=[\w.-]+", f"?v={BUILD_VERSION}", path.read_text())
+    sw_path = FRONTEND_DIR / "sw.js"
+    if sw_path.exists():
+        _sw_js = re.sub(r"invitio-v[\w.-]+", f"invitio-v{BUILD_VERSION}", sw_path.read_text())
 
 
 @asynccontextmanager
@@ -239,6 +246,19 @@ async def _rsvp_page(token: str, *, invite: bool) -> HTMLResponse:
 @app.get("/")
 def index():
     return _page("index.html")
+
+
+@app.get("/sw.js")
+def service_worker():
+    # Served from root so its scope covers the whole app (a SW under /static could
+    # only control /static/*). Build-stamped at startup; no-cache so the browser
+    # always re-checks it and picks up a new version.
+    return Response(_sw_js, media_type="application/javascript", headers=_NO_CACHE)
+
+
+@app.get("/manifest.webmanifest")
+def manifest():
+    return FileResponse(FRONTEND_DIR / "manifest.webmanifest", media_type="application/manifest+json")
 
 
 @app.get("/quick")

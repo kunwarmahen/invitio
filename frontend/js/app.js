@@ -127,8 +127,24 @@
     $("#app-screen").classList.remove("hidden");
     $("#who-name").textContent = me.name || me.email;
     $("#who-avatar").textContent = (me.name || me.email).charAt(0).toUpperCase();
+    wireSchemeToggle();
     loadAiStatus();
     showList();
+  }
+
+  // Dark-mode toggle (cycles system → light → dark; persisted by scheme.js).
+  const SCHEME_ICON = { system: "🖥️", light: "☀️", dark: "🌙" };
+  function syncSchemeBtn() {
+    const btn = $("#scheme-btn"); if (!btn || !window.invitioScheme) return;
+    const pref = window.invitioScheme.get();
+    btn.textContent = SCHEME_ICON[pref] || "🖥️";
+    btn.title = `Theme: ${pref}` + (pref === "system" ? " (follows your device)" : "");
+  }
+  function wireSchemeToggle() {
+    const btn = $("#scheme-btn"); if (!btn || !window.invitioScheme || btn.dataset.wired) return;
+    btn.dataset.wired = "1";
+    btn.addEventListener("click", () => { window.invitioScheme.cycle(); syncSchemeBtn(); });
+    syncSchemeBtn();
   }
 
   function showList() {
@@ -296,6 +312,7 @@
   }
 
   function shareUrl(token) { return `${location.origin}/e/${token}`; }
+  const mapsLink = (loc) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc)}`;
 
   function renderDetail(e, s) {
     const focalPos = `${e.image_focal_x ?? 50}% ${e.image_focal_y ?? 50}%`;
@@ -321,7 +338,7 @@
           <h2>${esc(e.title)}</h2>
           <div class="detail-meta">
             <span>📅 ${esc(fmtDate(e.event_date, e.timezone))}</span>
-            ${e.location ? `<span>📍 ${esc(e.location)}</span>` : ""}
+            ${e.location ? `<span>📍 ${esc(e.location)} · <a href="${esc(mapsLink(e.location))}" target="_blank" rel="noopener">Open in Maps ↗</a></span>` : ""}
             ${e.host_display_name ? `<span>👤 ${esc(e.host_display_name)}</span>` : ""}
           </div>
           ${e.description ? `<p style="color:var(--muted);white-space:pre-wrap">${esc(e.description)}</p>` : ""}
@@ -791,5 +808,19 @@
     }
     $("#auth-screen").classList.remove("hidden");
   }
+
+  // ── PWA service worker ──
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+    // Reload once when a freshly deployed SW takes control so the new app.js/CSS
+    // runs (guarded so the first install — no prior controller — doesn't reload).
+    let _reloadingForSW = false;
+    if (navigator.serviceWorker.controller) {
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (_reloadingForSW) return; _reloadingForSW = true; window.location.reload();
+      });
+    }
+  }
+
   boot();
 })();
