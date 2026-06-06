@@ -95,6 +95,7 @@ async def create_event(body: EventCreate, user: User = Depends(get_current_user)
         location=body.location,
         event_date=body.event_date,
         event_end=body.event_end,
+        rsvp_deadline=body.rsvp_deadline,
         timezone=body.timezone,
         host_display_name=(body.host_display_name or user.name).strip(),
         host_email=user.email,

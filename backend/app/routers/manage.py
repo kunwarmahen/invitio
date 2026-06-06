@@ -84,6 +84,7 @@ async def quick_create(body: QuickCreate, request: Request, db: AsyncSession = D
         location=body.location,
         event_date=body.event_date,
         event_end=body.event_end,
+        rsvp_deadline=body.rsvp_deadline,
         timezone=body.timezone,
         host_display_name=body.host_display_name.strip(),
         host_email=host_email,

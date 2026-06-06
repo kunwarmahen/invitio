@@ -79,6 +79,7 @@ def _public_event(event: Event, invite: Invite | None, existing: Rsvp | None) ->
         location=event.location,
         event_date=event.event_date,
         event_end=event.event_end,
+        rsvp_deadline=event.rsvp_deadline,
         timezone=event.timezone,
         host_display_name=event.host_display_name,
         image_path=event.image_path,

@@ -18,6 +18,28 @@ async def test_create_and_get_event(client, host):
     assert detail["images"] == []
 
 
+async def test_rsvp_deadline_round_trips_to_create_update_and_public(client, host):
+    _, headers = host
+    deadline = "2030-01-01T17:00:00Z"
+    r = await client.post(
+        "/api/events", json={"title": "Gala", "rsvp_deadline": deadline}, headers=headers
+    )
+    assert r.status_code == 201, r.text
+    ev = r.json()
+    assert ev["rsvp_deadline"] == deadline
+
+    # Visible to guests on the public invite (soft/informational).
+    pub = await client.get(f"/api/public/event/{ev['public_token']}")
+    assert pub.json()["rsvp_deadline"] == deadline
+
+    # Editable, including clearing it.
+    upd = await client.put(
+        f"/api/events/{ev['id']}", json={"rsvp_deadline": None}, headers=headers
+    )
+    assert upd.status_code == 200, upd.text
+    assert upd.json()["rsvp_deadline"] is None
+
+
 async def test_other_user_cannot_see_event(client, host, register):
     _, headers = host
     ev = await _create_event(client, headers)

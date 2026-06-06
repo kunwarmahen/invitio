@@ -66,6 +66,8 @@ class EventCreate(BaseModel):
     location: str = ""
     event_date: EventDateIn = None
     event_end: EventDateIn = None
+    # Optional cutoff by which guests are asked to RSVP (informational/soft).
+    rsvp_deadline: EventDateIn = None
     # IANA timezone of the event (e.g. "America/New_York"), captured from the
     # host's browser so the event renders in its own local time for all guests.
     timezone: str | None = Field(default=None, max_length=64)
@@ -85,6 +87,7 @@ class EventUpdate(BaseModel):
     location: str | None = None
     event_date: EventDateIn = None
     event_end: EventDateIn = None
+    rsvp_deadline: EventDateIn = None
     timezone: str | None = Field(default=None, max_length=64)
     host_display_name: str | None = None
     theme: str | None = None
@@ -226,6 +229,7 @@ class EventOut(BaseModel):
     location: str
     event_date: EventDateOut
     event_end: EventDateOut
+    rsvp_deadline: EventDateOut = None
     timezone: str | None
     host_display_name: str
     image_path: str | None
@@ -360,6 +364,7 @@ class PublicEventOut(BaseModel):
     location: str
     event_date: EventDateOut
     event_end: EventDateOut
+    rsvp_deadline: EventDateOut = None
     timezone: str | None
     host_display_name: str
     image_path: str | None

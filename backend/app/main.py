@@ -55,6 +55,7 @@ async def lifespan(app: FastAPI):
     # calorieapp migration style). Each is a no-op once the column is present.
     event_column_migrations = [
         ("event_end", "TIMESTAMP"),
+        ("rsvp_deadline", "TIMESTAMP"),
         ("host_email", "VARCHAR"),
         ("manage_token", "VARCHAR"),
         ("image_fit", "VARCHAR NOT NULL DEFAULT 'contain'"),

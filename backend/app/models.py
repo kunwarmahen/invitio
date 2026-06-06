@@ -47,6 +47,11 @@ class Event(Base):
     location: Mapped[str] = mapped_column(String, default="")
     event_date: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
     event_end: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
+    # Optional cutoff by which guests are asked to RSVP, shown on the invite so
+    # the host/co-hosts can plan a headcount. Soft (informational only) — the
+    # public RSVP endpoint still accepts responses after it passes. Stored
+    # naive-UTC like the other event datetimes.
+    rsvp_deadline: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
     # IANA timezone the event happens in (e.g. "America/New_York"), captured from
     # the host. event_date/event_end are stored naive-UTC; this is how the front
     # end renders them in the event's local time for every guest. Null = legacy.

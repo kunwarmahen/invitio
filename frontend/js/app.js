@@ -196,8 +196,8 @@
   function openEventModal(ev) {
     const editing = !!ev;
     const data = ev || { title: "", description: "", location: "", event_date: null, event_end: null,
-      host_display_name: me.name || "", theme: "violet", image_fit: "contain", allow_plus_ones: true,
-      wall_enabled: false, guestlist_public: false };
+      rsvp_deadline: null, host_display_name: me.name || "", theme: "violet", image_fit: "contain",
+      allow_plus_ones: true, wall_enabled: false, guestlist_public: false };
     const swatches = THEMES.map((t) => themeSwatch(t, t === data.theme)).join("");
 
     mountModal(`
@@ -213,6 +213,9 @@
           <div class="field"><label>Ends (optional)</label>
             <input id="f-end" type="datetime-local" value="${toLocalInput(data.event_end)}"></div>
         </div>
+        <div class="field"><label>RSVP deadline (optional)</label>
+          <input id="f-rsvp" type="datetime-local" value="${toLocalInput(data.rsvp_deadline)}">
+          <p class="g-sub" style="margin-top:4px">Shown to guests as “RSVP by …” so you and your co-hosts can plan a headcount.</p></div>
         <div class="field"><label>Location</label>
           <input id="f-loc" value="${esc(data.location)}" placeholder="123 Main St"></div>
         <div class="field"><label>Description</label>
@@ -266,11 +269,13 @@
       e.preventDefault();
       const dateVal = $("#f-date").value;
       const endVal = $("#f-end").value;
+      const rsvpVal = $("#f-rsvp").value;
       const body = {
         title: $("#f-title").value.trim(),
         host_display_name: $("#f-host").value.trim(),
         event_date: dateVal ? new Date(dateVal).toISOString() : null,
         event_end: endVal ? new Date(endVal).toISOString() : null,
+        rsvp_deadline: rsvpVal ? new Date(rsvpVal).toISOString() : null,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         location: $("#f-loc").value.trim(),
         description: $("#f-desc").value,
@@ -354,6 +359,7 @@
           <h2>${esc(e.title)}</h2>
           <div class="detail-meta">
             <span>📅 ${esc(fmtDate(e.event_date, e.timezone))}</span>
+            ${e.rsvp_deadline ? `<span>⏰ RSVP by ${esc(fmtDate(e.rsvp_deadline, e.timezone))}</span>` : ""}
             ${e.location ? `<span>📍 ${esc(e.location)} · <a href="${esc(mapsLink(e.location))}" target="_blank" rel="noopener">Open in Maps ↗</a></span>` : ""}
             ${e.host_display_name ? `<span>👤 ${esc(e.host_display_name)}</span>` : ""}
           </div>

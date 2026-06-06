@@ -28,13 +28,14 @@
 
   $("#quick-form").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const dateVal = $("#f-date").value, endVal = $("#f-end").value;
+    const dateVal = $("#f-date").value, endVal = $("#f-end").value, rsvpVal = $("#f-rsvp").value;
     const email = $("#f-email").value.trim();
     const body = {
       title: $("#f-title").value.trim(),
       host_display_name: $("#f-host").value.trim(),
       event_date: dateVal ? new Date(dateVal).toISOString() : null,
       event_end: endVal ? new Date(endVal).toISOString() : null,
+      rsvp_deadline: rsvpVal ? new Date(rsvpVal).toISOString() : null,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       location: $("#f-loc").value.trim(),
       description: $("#f-desc").value,

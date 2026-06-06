@@ -73,6 +73,19 @@
     if (c) c.addEventListener("click", () => copy(friendUrl()));
   }
 
+  // Soft RSVP-by note above the form: a gentle "please RSVP by …" before the
+  // deadline, and a still-open "were requested by …" after it (responses are
+  // never blocked — the cutoff is just to help the host plan a headcount).
+  function deadlineNoteHTML(e) {
+    if (!e.rsvp_deadline) return "";
+    const when = fmtDate(e.rsvp_deadline);
+    const past = new Date(e.rsvp_deadline).getTime() < Date.now();
+    const text = past
+      ? `RSVPs were requested by ${esc(when)} — you can still respond.`
+      : `Please RSVP by ${esc(when)}.`;
+    return `<p class="g-sub" style="margin:-4px 0 14px">⏰ ${text}</p>`;
+  }
+
   function fmtDate(iso) {
     if (!iso) return "Date to be announced";
     const opts = { weekday: "long", month: "long", day: "numeric", year: "numeric",
@@ -408,6 +421,7 @@
 
           <div class="rsvp-form" id="form-area">
             <h3 style="font-size:20px;margin-bottom:14px">Will you be there?</h3>
+            ${deadlineNoteHTML(e)}
             <div class="status-pick" id="status-pick">
               <button data-on="yes"><span class="em">🎉</span>Yes</button>
               <button data-on="maybe"><span class="em">🤔</span>Maybe</button>

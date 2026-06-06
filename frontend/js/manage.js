@@ -133,6 +133,7 @@
           <h2>${esc(e.title)}</h2>
           <div class="detail-meta">
             <span>📅 ${esc(fmtDate(e.event_date, e.timezone))}</span>
+            ${e.rsvp_deadline ? `<span>⏰ RSVP by ${esc(fmtDate(e.rsvp_deadline, e.timezone))}</span>` : ""}
             ${e.location ? `<span>📍 ${esc(e.location)} · <a href="${esc(mapsLink(e.location))}" target="_blank" rel="noopener">Open in Maps ↗</a></span>` : ""}
             ${e.host_display_name ? `<span>👤 ${esc(e.host_display_name)}</span>` : ""}
           </div>
@@ -418,6 +419,9 @@
           <div class="field"><label>Starts</label><input id="f-date" type="datetime-local" value="${toLocalInput(e.event_date)}"></div>
           <div class="field"><label>Ends</label><input id="f-end" type="datetime-local" value="${toLocalInput(e.event_end)}"></div>
         </div>
+        <div class="field"><label>RSVP deadline (optional)</label>
+          <input id="f-rsvp" type="datetime-local" value="${toLocalInput(e.rsvp_deadline)}">
+          <p class="g-sub" style="margin-top:4px">Shown to guests as “RSVP by …” so you and your co-hosts can plan a headcount.</p></div>
         <div class="field"><label>Location</label><input id="f-loc" value="${esc(e.location)}"></div>
         <div class="field"><label>Description</label><textarea id="f-desc">${esc(e.description)}</textarea>
           ${aiStatus.llm ? `<button type="button" class="btn btn-line btn-sm" id="gen-desc" style="margin-top:6px">✨ Generate with AI</button>` : ""}</div>
@@ -457,7 +461,7 @@
     });
     $("#ev-form").addEventListener("submit", async (ev) => {
       ev.preventDefault();
-      const dateVal = $("#f-date").value, endVal = $("#f-end").value;
+      const dateVal = $("#f-date").value, endVal = $("#f-end").value, rsvpVal = $("#f-rsvp").value;
       const btn = $("#ev-save"); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
       try {
         await api("", { method: "PUT", body: {
@@ -465,6 +469,7 @@
           host_display_name: $("#f-host").value.trim(),
           event_date: dateVal ? new Date(dateVal).toISOString() : null,
           event_end: endVal ? new Date(endVal).toISOString() : null,
+          rsvp_deadline: rsvpVal ? new Date(rsvpVal).toISOString() : null,
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           location: $("#f-loc").value.trim(),
           description: $("#f-desc").value,
