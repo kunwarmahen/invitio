@@ -22,6 +22,13 @@
        the live --accent so per-event themes + dark mode adapt automatically. */
     --accent-soft: #ede9fe;
     --accent-ink: #5b21b6;
+    /* toast is a high-contrast pill: dark bg + light text; it inverts in dark mode. */
+    --toast-bg: #1a1530;
+    --toast-ink: #fff;
+    /* tell the UA which scheme we're painting so iOS Safari uses a light canvas +
+       light native form controls even when the OS is in dark mode (otherwise the
+       page backdrop behind <body> renders dark). Flipped in the dark block. */
+    color-scheme: light;
 }
 /* per-event themes (set data-theme on body): only the accent differs — the soft
    tint and ink shade are derived on `body` from the accent + current surface/ink,
@@ -60,10 +67,15 @@
     --maybe: #fbbf24;
     --shadow: 0 12px 44px -16px rgba(0, 0, 0, .6);
     --shadow-sm: 0 2px 14px -4px rgba(0, 0, 0, .5);
+    --toast-bg: #ece9f5;
+    --toast-ink: #1a1530;
+    color-scheme: dark;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
+/* also paint the root so the iOS overscroll/backdrop area matches the theme bg. */
+html { background: var(--bg); }
 body {
     font-family: var(--font);
     background: var(--bg);
@@ -193,9 +205,9 @@ textarea { resize: vertical; min-height: 84px; }
 /* ── chips / pills ── */
 .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700;
     padding: 4px 10px; border-radius: 999px; }
-.pill.yes { background: #dcfce7; color: var(--ok); }
-.pill.no { background: #fee2e2; color: var(--no); }
-.pill.maybe { background: #fef3c7; color: var(--maybe); }
+.pill.yes { background: color-mix(in srgb, var(--ok) 16%, var(--surface)); color: var(--ok); }
+.pill.no { background: color-mix(in srgb, var(--no) 16%, var(--surface)); color: var(--no); }
+.pill.maybe { background: color-mix(in srgb, var(--maybe) 16%, var(--surface)); color: var(--maybe); }
 
 /* ── modal ── */
 .modal-bg {
@@ -353,7 +365,7 @@ textarea { resize: vertical; min-height: 84px; }
 .env-letter {
     left: 6%; top: 9%; width: 88%; height: 84%; z-index: 2;
     background: #fff; border-radius: 10px; box-shadow: 0 8px 22px rgba(0,0,0,.22);
-    overflow: hidden; text-align: center; color: var(--ink);
+    overflow: hidden; text-align: center; color: #1a1530;
     transition: transform .85s cubic-bezier(.5,0,.2,1) .35s, box-shadow .4s ease;
 }
 /* photo variant: full-bleed image with the title on a gradient scrim */
@@ -371,7 +383,7 @@ textarea { resize: vertical; min-height: 84px; }
     display: grid; place-items: center; font-size: 22px; color: #fff;
     background: linear-gradient(135deg, var(--accent), var(--accent-ink));
 }
-.env-letter .el-text .el-host { font-size: 12px; color: var(--muted); }
+.env-letter .el-text .el-host { font-size: 12px; color: #6b6580; }
 .env-letter .el-text .el-title { font-weight: 800; font-size: 16px; line-height: 1.2; }
 /* front pocket — covers the whole front except a top-center triangle (the flap
    seam), so the letter behind is fully hidden until the flap opens */
@@ -417,12 +429,12 @@ textarea { resize: vertical; min-height: 84px; }
 /* ── toast ── */
 #toast {
     position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%) translateY(120px);
-    background: var(--ink); color: #fff; padding: 13px 22px; border-radius: 12px;
+    background: var(--toast-bg); color: var(--toast-ink); padding: 13px 22px; border-radius: 12px;
     font-size: 14px; font-weight: 600; box-shadow: var(--shadow); z-index: 100;
     transition: transform .28s cubic-bezier(.2,.8,.2,1); max-width: 90vw;
 }
 #toast.show { transform: translateX(-50%) translateY(0); }
-#toast.err { background: var(--no); }
+#toast.err { background: #dc2626; color: #fff; }
 
 .spinner { width: 18px; height: 18px; border: 2.5px solid rgba(255,255,255,.4);
     border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
