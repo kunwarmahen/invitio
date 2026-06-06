@@ -9,6 +9,9 @@ python-jose[cryptography]==3.3.0
 bcrypt==4.2.1
 python-multipart==0.0.9
 
+# Async HTTP client for optional AI text/image generation (OpenAI-compatible APIs)
+httpx==0.27.2
+
 # SQLite async driver (dev default)
 aiosqlite==0.20.0
 

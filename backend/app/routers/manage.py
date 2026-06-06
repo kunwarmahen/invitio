@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import event_service
+from app import ai_service, event_service
 from app.auth import new_token
 from app.config import settings
 from app.database import get_db
@@ -19,6 +19,9 @@ from app.models import Event, Rsvp
 from app.schemas import (
     AddInvitesRequest,
     AddInvitesResult,
+    AiImageRequest,
+    AiTextRequest,
+    AiTextResult,
     BroadcastRequest,
     BroadcastResult,
     EventDetail,
@@ -147,3 +150,16 @@ async def manage_questions(token: str, body: QuestionsUpdate, db: AsyncSession =
 @router.post("/manage/{token}/broadcast", response_model=BroadcastResult)
 async def manage_broadcast(token: str, body: BroadcastRequest, db: AsyncSession = Depends(get_db)):
     return await event_service.send_broadcast(await _load_managed(token, db), body)
+
+
+@router.post("/manage/{token}/ai/text", response_model=AiTextResult)
+async def manage_ai_text(token: str, body: AiTextRequest, db: AsyncSession = Depends(get_db)):
+    await _load_managed(token, db)  # token must be valid (not an open LLM proxy)
+    return AiTextResult(text=await ai_service.text_from_request(body))
+
+
+@router.post("/manage/{token}/ai/image", response_model=EventOut)
+async def manage_ai_image(token: str, body: AiImageRequest, db: AsyncSession = Depends(get_db)):
+    event = await _load_managed(token, db)
+    await event_service.generate_event_image(event, body.prompt, db)
+    return EventOut.model_validate(event)

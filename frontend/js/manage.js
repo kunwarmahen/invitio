@@ -50,9 +50,17 @@
     return data;
   }
 
+  // AI availability — generate buttons only show when configured. Status lives at
+  // /api/ai/status (outside the manage prefix), so fetch it directly.
+  let aiStatus = { llm: false, image: false };
+  async function loadAiStatus() {
+    try { aiStatus = await (await fetch("/api/ai/status")).json(); }
+    catch { aiStatus = { llm: false, image: false }; }
+  }
+
   async function load() {
     try {
-      const [event, summary] = await Promise.all([api(""), api("/summary")]);
+      const [event, summary] = await Promise.all([api(""), api("/summary"), loadAiStatus()]);
       document.title = `Manage · ${event.title}`;
       render(event, summary);
     } catch (err) {
@@ -113,6 +121,7 @@
             <button class="btn btn-ghost btn-sm" id="edit-btn">✎ Edit details</button>
             <a class="btn btn-line btn-sm" href="/e/${esc(e.public_token)}" target="_blank">👁 Preview invite</a>
             <button class="btn btn-line btn-sm" id="broadcast-btn">✉️ Message guests</button>
+            ${aiStatus.image ? `<button class="btn btn-line btn-sm" id="gen-img-btn">✨ Generate image</button>` : ""}
             <button class="btn btn-danger btn-sm" id="del-btn">🗑 Delete</button>
           </div>
         </div>
@@ -161,6 +170,13 @@
     $("#add-invites-btn").onclick = () => addInvites();
     $("#broadcast-btn").onclick = () => openBroadcastModal(e);
     $("#edit-questions-btn").onclick = () => openQuestionsModal(e);
+    const genImg = $("#gen-img-btn");
+    if (genImg) genImg.onclick = async () => {
+      genImg.disabled = true; genImg.innerHTML = '<span class="spinner"></span> Generating…';
+      toast("Generating image — this can take a moment…");
+      try { await api("/ai/image", { method: "POST", body: { prompt: "" } }); toast("Image generated"); load(); }
+      catch (err) { toast(err.message, true); genImg.disabled = false; genImg.innerHTML = "✨ Generate image"; }
+    };
     document.querySelectorAll("[data-copy]").forEach((b) =>
       b.addEventListener("click", () => copy(b.dataset.copy)));
   }
@@ -267,11 +283,27 @@
           <option value="pending">Haven't responded yet</option>
         </select></div>
       <div class="field"><label>Subject</label><input id="bc-subj" placeholder="An update about the event"></div>
-      <div class="field"><label>Message</label><textarea id="bc-msg" placeholder="Write your message…" style="min-height:120px"></textarea></div>
+      <div class="field"><label>Message</label><textarea id="bc-msg" placeholder="Write your message…" style="min-height:120px"></textarea>
+        ${aiStatus.llm ? `<div class="row" style="align-items:center;margin-top:6px">
+          <input id="bc-intent" class="field" style="margin:0" placeholder="What's it about? (e.g. venue moved indoors)">
+          <button type="button" class="btn btn-line btn-sm" id="bc-gen" style="flex:0 0 auto">✨ Draft</button></div>` : ""}</div>
       <div class="modal-foot">
         <button class="btn btn-line" data-close>Cancel</button>
         <button class="btn btn-primary" id="bc-send">Send</button>
       </div>`);
+    const bcGen = $("#bc-gen");
+    if (bcGen) bcGen.addEventListener("click", async () => {
+      bcGen.disabled = true; bcGen.innerHTML = '<span class="spinner"></span>';
+      try {
+        const res = await api("/ai/text", { method: "POST", body: {
+          kind: "broadcast", title: e.title, audience: $("#bc-aud").value,
+          location: e.location, host_display_name: e.host_display_name,
+          instructions: $("#bc-intent").value.trim(),
+        }});
+        $("#bc-msg").value = res.text;
+      } catch (err) { toast(err.message, true); }
+      finally { bcGen.disabled = false; bcGen.innerHTML = "✨ Draft"; }
+    });
     $("#bc-send").addEventListener("click", async () => {
       const subject = $("#bc-subj").value.trim();
       const message = $("#bc-msg").value.trim();
@@ -301,7 +333,8 @@
           <div class="field"><label>Ends</label><input id="f-end" type="datetime-local" value="${toLocalInput(e.event_end)}"></div>
         </div>
         <div class="field"><label>Location</label><input id="f-loc" value="${esc(e.location)}"></div>
-        <div class="field"><label>Description</label><textarea id="f-desc">${esc(e.description)}</textarea></div>
+        <div class="field"><label>Description</label><textarea id="f-desc">${esc(e.description)}</textarea>
+          ${aiStatus.llm ? `<button type="button" class="btn btn-line btn-sm" id="gen-desc" style="margin-top:6px">✨ Generate with AI</button>` : ""}</div>
         <div class="field"><label>Theme</label><div class="theme-pick" id="theme-pick">${swatches}</div></div>
         <div class="field"><label style="display:flex;gap:8px;align-items:center;cursor:pointer">
           <input type="checkbox" id="f-fit" style="width:auto" ${e.image_fit === "contain" ? "checked" : ""}> Show the full image (don't crop it)</label></div>
@@ -318,6 +351,20 @@
       $("#theme-pick").querySelectorAll(".sw").forEach((s) => s.classList.remove("sel"));
       sw.classList.add("sel");
     }));
+    const genDesc = $("#gen-desc");
+    if (genDesc) genDesc.addEventListener("click", async () => {
+      const title = $("#f-title").value.trim();
+      if (!title) { toast("Add an event title first", true); return; }
+      genDesc.disabled = true; genDesc.innerHTML = '<span class="spinner"></span> Generating…';
+      try {
+        const res = await api("/ai/text", { method: "POST", body: {
+          kind: "description", title, event_date: $("#f-date").value || null,
+          location: $("#f-loc").value.trim(), host_display_name: $("#f-host").value.trim(), theme,
+        }});
+        $("#f-desc").value = res.text;
+      } catch (err) { toast(err.message, true); }
+      finally { genDesc.disabled = false; genDesc.innerHTML = "✨ Generate with AI"; }
+    });
     $("#ev-form").addEventListener("submit", async (ev) => {
       ev.preventDefault();
       const dateVal = $("#f-date").value, endVal = $("#f-end").value;

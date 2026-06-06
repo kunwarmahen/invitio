@@ -206,6 +206,34 @@ class BroadcastResult(BaseModel):
     email_enabled: bool
 
 
+# ── AI generation ────────────────────────────────────────────────────────────
+class AiStatus(BaseModel):
+    llm: bool
+    image: bool
+
+
+class AiTextRequest(BaseModel):
+    # Stateless: the create form may be unsaved, so the event fields come in here
+    # rather than via an event id.
+    kind: Literal["description", "broadcast"]
+    title: str = ""
+    event_date: str | None = None
+    location: str = ""
+    host_display_name: str = ""
+    theme: str = ""
+    tone: str = ""           # description only
+    audience: str = ""       # broadcast only (informational)
+    instructions: str = ""   # broadcast intent
+
+
+class AiTextResult(BaseModel):
+    text: str
+
+
+class AiImageRequest(BaseModel):
+    prompt: str = ""  # optional extra guidance; the server seeds the rest from the event
+
+
 class EventSummary(BaseModel):
     yes: int = 0
     no: int = 0

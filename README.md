@@ -36,6 +36,9 @@ reverse proxy.
   or multi-select), optionally required; answers show on the dashboard.
 - **Message all guests** — broadcast an update or cancellation by email,
   targeted by RSVP status (everyone / yes / maybe / no / not-yet-responded).
+- **AI generation (optional)** — generate invite copy, broadcast drafts, and a
+  hero image from any OpenAI-compatible endpoint. Local-first: Ollama / llama.cpp
+  for text, LocalAI (SDXL/FLUX) for images. Off until configured; see `.env.example`.
 - **Host RSVP notifications** — the host gets an email the moment a guest
   responds (works for both account and quick-create events).
 - **Reminder emails** — a background loop emails a reminder to "yes" guests and

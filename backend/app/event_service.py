@@ -43,15 +43,13 @@ def _remove_image_file(image_path: str | None) -> None:
         pass
 
 
-async def save_image(event: Event, file: UploadFile, db: AsyncSession) -> None:
-    if file.content_type not in _ALLOWED_IMAGE_TYPES:
-        raise HTTPException(status_code=400, detail="Unsupported image type (use JPEG, PNG, WebP, or GIF)")
-    data = await file.read()
+async def _write_image(event: Event, data: bytes, ext: str, db: AsyncSession) -> None:
+    """Persist image bytes to the uploads dir and point the event at them, dropping
+    any previous file. Shared by direct uploads and AI-generated images."""
     if len(data) > settings.max_upload_mb * 1024 * 1024:
         raise HTTPException(status_code=400, detail=f"Image too large (max {settings.max_upload_mb} MB)")
-
     os.makedirs(settings.upload_dir, exist_ok=True)
-    fname = f"{uuid.uuid4().hex}{_EXT.get(file.content_type, '.img')}"
+    fname = f"{uuid.uuid4().hex}{ext}"
     with open(os.path.join(settings.upload_dir, fname), "wb") as fh:
         fh.write(data)
 
@@ -59,6 +57,21 @@ async def save_image(event: Event, file: UploadFile, db: AsyncSession) -> None:
     event.image_path = f"/uploads/{fname}"
     await db.commit()
     await db.refresh(event)
+
+
+async def save_image(event: Event, file: UploadFile, db: AsyncSession) -> None:
+    if file.content_type not in _ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail="Unsupported image type (use JPEG, PNG, WebP, or GIF)")
+    data = await file.read()
+    await _write_image(event, data, _EXT.get(file.content_type, ".img"), db)
+
+
+async def generate_event_image(event: Event, extra_prompt: str, db: AsyncSession) -> None:
+    """Generate a hero image from the event details and save it as the event's image."""
+    from app import ai_service
+    ctx = {"title": event.title, "location": event.location, "theme": event.theme}
+    data = await ai_service.generate_image_png(ai_service.image_prompt(ctx, extra_prompt))
+    await _write_image(event, data, ".png", db)
 
 
 async def delete_event(event: Event, db: AsyncSession) -> None:

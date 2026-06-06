@@ -45,5 +45,26 @@ class Settings(BaseSettings):
     reminder_window_hours: int = 24
     reminder_check_interval_minutes: int = 60
 
+    # Optional AI generation. Both default OFF and are configured independently —
+    # text and images usually run on different local servers (e.g. Ollama for
+    # text, LocalAI for images). Any OpenAI-compatible endpoint works (local or
+    # hosted); only the base URL / key / model change.
+    #
+    # Text (LLM): /v1/chat/completions — Ollama (:11434/v1) or llama.cpp
+    # llama-server (:8080/v1); set the api key only for hosted providers.
+    ai_llm_enabled: bool = False
+    ai_llm_base_url: str = "http://localhost:11434/v1"
+    ai_llm_api_key: str = ""
+    ai_llm_model: str = "llama3.1"
+    ai_llm_timeout: int = 60
+    # Images: /v1/images/generations — e.g. LocalAI serving SDXL/FLUX on a GPU.
+    # For an RTX 3090 (24 GB): SDXL 1.0 (default), SDXL-Turbo, or FLUX.1-schnell.
+    ai_image_enabled: bool = False
+    ai_image_base_url: str = "http://localhost:8080/v1"
+    ai_image_api_key: str = ""
+    ai_image_model: str = "sdxl"
+    ai_image_size: str = "1024x1024"
+    ai_image_timeout: int = 180
+
 
 settings = Settings()

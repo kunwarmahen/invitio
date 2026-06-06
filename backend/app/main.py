@@ -16,7 +16,7 @@ from app.config import settings
 from app.database import AsyncSessionLocal, Base, engine
 from app.models import Event, Invite
 from app import reminder_service
-from app.routers import auth, events, manage, rsvp
+from app.routers import ai, auth, events, manage, rsvp
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
@@ -103,6 +103,7 @@ app.include_router(auth.router)
 app.include_router(events.router)
 app.include_router(manage.router)
 app.include_router(rsvp.router)
+app.include_router(ai.router)
 
 # Uploaded invite images (bind-mounted volume on the NAS).
 os.makedirs(settings.upload_dir, exist_ok=True)

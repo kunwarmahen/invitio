@@ -11,6 +11,7 @@ from app.models import Event, Rsvp, User
 from app.schemas import (
     AddInvitesRequest,
     AddInvitesResult,
+    AiImageRequest,
     BroadcastRequest,
     BroadcastResult,
     EventCreate,
@@ -128,3 +129,10 @@ async def set_questions(event_id: int, body: QuestionsUpdate, user: User = Depen
 @router.post("/{event_id}/broadcast", response_model=BroadcastResult)
 async def broadcast(event_id: int, body: BroadcastRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     return await event_service.send_broadcast(await _load_event(event_id, user, db), body)
+
+
+@router.post("/{event_id}/ai/image", response_model=EventOut)
+async def ai_image(event_id: int, body: AiImageRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    event = await _load_event(event_id, user, db)
+    await event_service.generate_event_image(event, body.prompt, db)
+    return EventOut.model_validate(event)
