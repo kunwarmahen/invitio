@@ -64,6 +64,7 @@ async def lifespan(app: FastAPI):
         ("guestlist_public", "BOOLEAN NOT NULL DEFAULT false"),
         ("image_focal_x", "FLOAT NOT NULL DEFAULT 50"),
         ("image_focal_y", "FLOAT NOT NULL DEFAULT 50"),
+        ("image_thumb_path", "VARCHAR"),
     ]
     for col, decl in event_column_migrations:
         try:
@@ -73,15 +74,16 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass  # column already exists
 
-    # Same idempotent pattern for invite columns added after the table existed.
-    invite_column_migrations = [
-        ("viewed_at", "TIMESTAMP"),
+    # Same idempotent pattern for columns added to other tables after they existed.
+    other_column_migrations = [
+        ("invites", "viewed_at", "TIMESTAMP"),
+        ("event_images", "thumb_path", "VARCHAR"),
     ]
-    for col, decl in invite_column_migrations:
+    for table, col, decl in other_column_migrations:
         try:
             async with engine.begin() as conn:
-                await conn.execute(text(f"ALTER TABLE invites ADD COLUMN {col} {decl}"))
-            print(f"[MIGRATION] Added invites.{col}")
+                await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {decl}"))
+            print(f"[MIGRATION] Added {table}.{col}")
         except Exception:
             pass  # column already exists
 

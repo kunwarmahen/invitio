@@ -12,6 +12,10 @@ python-multipart==0.0.9
 # Async HTTP client for optional AI text/image generation (OpenAI-compatible APIs)
 httpx==0.27.2
 
+# Image processing: validate uploads by their real bytes (magic-byte sniffing),
+# downsize/compress, and generate thumbnails for cards + the envelope.
+Pillow==11.0.0
+
 # SQLite async driver (dev default)
 aiosqlite==0.20.0
 

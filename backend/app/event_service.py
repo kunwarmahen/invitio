@@ -7,9 +7,11 @@ import os
 import uuid
 
 from fastapi import HTTPException, UploadFile
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import image_service
 from app.auth import new_token
 from app.config import settings
 from app.email_service import email_configured, send_broadcast_email, send_invite_email
@@ -35,11 +37,8 @@ from app.schemas import (
     EventUpdate,
     InviteOut,
     QuestionIn,
+    RsvpOut,
 )
-
-_ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
-_EXT = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif"}
-
 
 def apply_update(event: Event, body: EventUpdate) -> None:
     for field, value in body.model_dump(exclude_unset=True).items():
@@ -55,15 +54,28 @@ def _remove_image_file(image_path: str | None) -> None:
         pass
 
 
-def _save_bytes(data: bytes, ext: str) -> str:
-    """Validate size, write the bytes to the uploads dir, return the public path."""
-    if len(data) > settings.max_upload_mb * 1024 * 1024:
-        raise HTTPException(status_code=400, detail=f"Image too large (max {settings.max_upload_mb} MB)")
+def _remove_image(img: EventImage) -> None:
+    """Delete both the full image and its thumbnail from disk."""
+    _remove_image_file(img.path)
+    _remove_image_file(img.thumb_path)
+
+
+def _write_file(data: bytes, ext: str) -> str:
+    """Write already-processed bytes to the uploads dir, return the public path."""
     os.makedirs(settings.upload_dir, exist_ok=True)
     fname = f"{uuid.uuid4().hex}{ext}"
     with open(os.path.join(settings.upload_dir, fname), "wb") as fh:
         fh.write(data)
     return f"/uploads/{fname}"
+
+
+def _process_and_store(data: bytes) -> tuple[str, str]:
+    """Validate (magic bytes), downsize/compress, and thumbnail an upload, writing
+    both files. Returns (full_path, thumb_path). Raises HTTP 400 on bad input."""
+    if len(data) > settings.max_upload_mb * 1024 * 1024:
+        raise HTTPException(status_code=400, detail=f"Image too large (max {settings.max_upload_mb} MB)")
+    full_bytes, full_ext, thumb_bytes, thumb_ext = image_service.process(data)
+    return _write_file(full_bytes, full_ext), _write_file(thumb_bytes, thumb_ext)
 
 
 def _cover_image(event: Event) -> EventImage | None:
@@ -78,19 +90,21 @@ def _cover_image(event: Event) -> EventImage | None:
 
 
 def _sync_cover(event: Event) -> None:
-    """Mirror the cover image's path into `event.image_path` (the denormalized
-    field every legacy read-path uses). Clears it when no images remain. Caller
-    commits."""
+    """Mirror the cover image's path + thumbnail into `event.image_path` /
+    `event.image_thumb_path` (the denormalized fields read-paths use). Clears them
+    when no images remain. Caller commits."""
     cover = _cover_image(event)
     event.image_path = cover.path if cover else None
+    event.image_thumb_path = cover.thumb_path if cover else None
 
 
-async def _add_image(event: Event, data: bytes, ext: str, db: AsyncSession, *, make_cover: bool) -> EventImage:
-    """Persist bytes as a new gallery image appended after the current last one.
-    Becomes the cover when asked, or automatically if the event had none."""
-    path = _save_bytes(data, ext)
+async def _add_image(event: Event, data: bytes, db: AsyncSession, *, make_cover: bool) -> EventImage:
+    """Process raw upload bytes into a new gallery image (validated, downsized,
+    thumbnailed) appended after the current last one. Becomes the cover when
+    asked, or automatically if the event had none."""
+    path, thumb_path = _process_and_store(data)
     next_pos = max((i.position for i in event.images), default=-1) + 1
-    img = EventImage(event_id=event.id, path=path, position=next_pos)
+    img = EventImage(event_id=event.id, path=path, thumb_path=thumb_path, position=next_pos)
     db.add(img)
     event.images.append(img)
     if make_cover or len(event.images) == 1:
@@ -105,20 +119,15 @@ async def _add_image(event: Event, data: bytes, ext: str, db: AsyncSession, *, m
 
 async def save_image(event: Event, file: UploadFile, db: AsyncSession) -> None:
     """Upload a single image and make it the cover (the "Change image" button)."""
-    if file.content_type not in _ALLOWED_IMAGE_TYPES:
-        raise HTTPException(status_code=400, detail="Unsupported image type (use JPEG, PNG, WebP, or GIF)")
-    data = await file.read()
-    await _add_image(event, data, _EXT.get(file.content_type, ".img"), db, make_cover=True)
+    await _add_image(event, await file.read(), db, make_cover=True)
 
 
 async def add_images(event: Event, files: list[UploadFile], db: AsyncSession) -> None:
     """Append one or more images to the gallery. The first becomes the cover only
-    if the event had none."""
+    if the event had none. Each upload is validated by its bytes (not its
+    Content-Type) in image_service."""
     for file in files:
-        if file.content_type not in _ALLOWED_IMAGE_TYPES:
-            raise HTTPException(status_code=400, detail="Unsupported image type (use JPEG, PNG, WebP, or GIF)")
-        data = await file.read()
-        await _add_image(event, data, _EXT.get(file.content_type, ".img"), db, make_cover=False)
+        await _add_image(event, await file.read(), db, make_cover=False)
 
 
 def _find_image(event: Event, image_id: int) -> EventImage:
@@ -140,7 +149,7 @@ async def set_cover(event: Event, image_id: int, db: AsyncSession) -> None:
 async def delete_image(event: Event, image_id: int, db: AsyncSession) -> None:
     target = _find_image(event, image_id)
     was_cover = target.is_cover
-    _remove_image_file(target.path)
+    _remove_image(target)
     event.images.remove(target)
     await db.delete(target)
     if was_cover:
@@ -167,12 +176,12 @@ async def generate_event_image(event: Event, extra_prompt: str, db: AsyncSession
     from app import ai_service
     ctx = {"title": event.title, "location": event.location, "theme": event.theme}
     data = await ai_service.generate_image_png(ai_service.image_prompt(ctx, extra_prompt))
-    await _add_image(event, data, ".png", db, make_cover=True)
+    await _add_image(event, data, db, make_cover=True)
 
 
 async def delete_event(event: Event, db: AsyncSession) -> None:
     for img in event.images:
-        _remove_image_file(img.path)
+        _remove_image(img)
     _remove_image_file(event.image_path)  # legacy events may predate the gallery
     await db.delete(event)
     await db.commit()
@@ -241,6 +250,68 @@ def summarize(event: Event) -> EventSummary:
             s.maybe += 1
     s.responded = s.yes + s.no + s.maybe
     return s
+
+
+# ── Pagination (guest list / RSVPs) ──────────────────────────────────────────
+# Stable orderings shared by the embedded first page (sliced from the already-
+# loaded relationship) and the paginated DB endpoints, so "show more" appends in
+# the same order it started: invites oldest-first, RSVPs newest-first.
+def ordered_invites(event: Event) -> list[Invite]:
+    return sorted(event.invites, key=lambda i: i.id)
+
+
+def ordered_rsvps(event: Event) -> list[Rsvp]:
+    return sorted(event.rsvps, key=lambda r: (r.updated_at, r.id), reverse=True)
+
+
+async def fetch_invite_page(
+    event_id: int, db: AsyncSession, limit: int, offset: int
+) -> tuple[list[Invite], int]:
+    total = (
+        await db.execute(select(func.count(Invite.id)).where(Invite.event_id == event_id))
+    ).scalar_one()
+    rows = (
+        await db.execute(
+            select(Invite)
+            .where(Invite.event_id == event_id)
+            .order_by(Invite.id)
+            .limit(limit)
+            .offset(offset)
+        )
+    ).scalars().all()
+    return list(rows), total
+
+
+def cap_detail(detail, event: Event) -> None:
+    """Trim an EventDetail's embedded invite/RSVP lists to the first page and set
+    the *_total counts, so the dashboard ships a bounded payload and pages in the
+    rest via the /invites and /rsvps endpoints. Mutates `detail` in place."""
+    limit = settings.list_page_size
+    invites = ordered_invites(event)
+    rsvps = ordered_rsvps(event)
+    detail.invites = [InviteOut.model_validate(i) for i in invites[:limit]]
+    detail.invites_total = len(invites)
+    detail.rsvps = [RsvpOut.model_validate(r) for r in rsvps[:limit]]
+    detail.rsvps_total = len(rsvps)
+
+
+async def fetch_rsvp_page(
+    event_id: int, db: AsyncSession, limit: int, offset: int
+) -> tuple[list[Rsvp], int]:
+    total = (
+        await db.execute(select(func.count(Rsvp.id)).where(Rsvp.event_id == event_id))
+    ).scalar_one()
+    rows = (
+        await db.execute(
+            select(Rsvp)
+            .where(Rsvp.event_id == event_id)
+            .order_by(Rsvp.updated_at.desc(), Rsvp.id.desc())
+            .options(selectinload(Rsvp.answers))
+            .limit(limit)
+            .offset(offset)
+        )
+    ).scalars().all()
+    return list(rows), total
 
 
 # ── Custom RSVP questions ────────────────────────────────────────────────────

@@ -119,15 +119,12 @@
       ? `<div class="img" style="background-image:url('${esc(e.image_path)}');background-position:${focalPos}"><div class="upload-btn" id="img-btn">＋ Add photos</div></div>`
       : `<div class="img"><div class="ph">🖼️</div><div class="upload-btn" id="img-btn">＋ Add photos</div></div>`;
 
-    const rsvps = [...e.rsvps].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-    const rsvpRows = rsvps.length ? rsvps.map((r) => rsvpRowHTML(r, e.questions)).join("")
+    // First page only (server-ordered, newest RSVPs first); the rest load via
+    // "Show more". *_total are the full counts.
+    const rsvpRows = e.rsvps.length ? e.rsvps.map((r) => rsvpRowHTML(r, e.questions)).join("")
       : `<p class="g-sub" style="padding:8px 0">No responses yet.</p>`;
-    const inviteRows = e.invites.length ? e.invites.map((i) => `
-      <div class="guest-row">
-        <div><div class="g-name">${esc(i.guest_name || i.guest_email)}</div>
-          <div class="g-sub">${esc(i.guest_email)}${i.sent_at ? " · ✉️ invited" : " · not emailed"}${i.viewed_at ? " · 👁 opened" : ""}</div></div>
-        <button class="btn btn-line btn-sm" data-copy="${esc(location.origin)}/i/${esc(i.token)}">Copy link</button>
-      </div>`).join("") : `<p class="g-sub" style="padding:8px 0">No guests added yet.</p>`;
+    const inviteRows = e.invites.length ? e.invites.map(inviteRowHTML).join("")
+      : `<p class="g-sub" style="padding:8px 0">No guests added yet.</p>`;
 
     $("#manage-content").innerHTML = `
       <div class="detail-hero">
@@ -161,7 +158,10 @@
             </div>
             <p class="g-sub" style="text-align:center;margin-top:8px">${s.responded} of ${s.invited} invited have responded</p>
           </div>
-          <div class="panel"><h4>Who's responded</h4>${rsvpRows}</div>
+          <div class="panel"><h4>Who's responded (${e.rsvps_total ?? e.rsvps.length})</h4>
+            <div id="rsvp-rows">${rsvpRows}</div>
+            ${showMoreHTML("rsvps", e.rsvps_total ?? e.rsvps.length, e.rsvps.length)}
+          </div>
         </div>
         <div>
           <div class="panel"><h4>Photos (${e.images.length})</h4>
@@ -183,7 +183,9 @@
               <input type="checkbox" id="send-email-chk" checked style="width:auto"> Email an RSVP link to each guest</label>
             <button class="btn btn-primary" id="add-invites-btn" style="width:100%">Send invitations</button>
             <div class="panel" style="box-shadow:none;border:none;padding:14px 0 0;margin:6px 0 0">
-              <h4>Guest list (${e.invites.length})</h4>${inviteRows}</div>
+              <h4>Guest list (${e.invites_total ?? e.invites.length})</h4>
+              <div id="invite-rows">${inviteRows}</div>
+              ${showMoreHTML("invites", e.invites_total ?? e.invites.length, e.invites.length)}</div>
           </div>
           <div class="panel"><h4>RSVP questions (${e.questions.length})</h4>
             ${questionsListHTML(e.questions)}
@@ -215,10 +217,13 @@
         try { await api(`/wall/${b.dataset.delPost}`, { method: "DELETE" }); toast("Post removed"); load(); }
         catch (err) { toast(err.message, true); }
       }));
-    document.querySelectorAll("[data-copy]").forEach((b) =>
-      b.addEventListener("click", () => copy(b.dataset.copy)));
+    document.querySelectorAll("[data-copy]").forEach((b) => {
+      b.dataset.wired = "1"; b.addEventListener("click", () => copy(b.dataset.copy));
+    });
     document.querySelectorAll("[data-share-native]").forEach((b) =>
       b.addEventListener("click", () => nativeShare(b.dataset.url, b.dataset.title)));
+    document.querySelectorAll("[data-more]").forEach((b) =>
+      b.addEventListener("click", () => loadMore(e, b)));
   }
 
   function wallModerationHTML(posts) {
@@ -249,6 +254,39 @@
       <div class="g-sub">${esc(r.guest_email || "no email")}${extra}${r.message ? ` · "${esc(r.message)}"` : ""}</div>
       ${answersHTML(r.answers, questions)}
     </div></div>`;
+  }
+
+  function inviteRowHTML(i) {
+    return `<div class="guest-row">
+      <div><div class="g-name">${esc(i.guest_name || i.guest_email)}</div>
+        <div class="g-sub">${esc(i.guest_email)}${i.sent_at ? " · ✉️ invited" : " · not emailed"}${i.viewed_at ? " · 👁 opened" : ""}</div></div>
+      <button class="btn btn-line btn-sm" data-copy="${esc(location.origin)}/i/${esc(i.token)}">Copy link</button>
+    </div>`;
+  }
+
+  // ── "show more" pagination for the guest list / RSVP list ──────────────────
+  function showMoreHTML(kind, total, shown) {
+    if (total <= shown) return "";
+    return `<button class="btn btn-line btn-sm" data-more="${kind}" data-shown="${shown}" style="margin-top:10px">Show ${total - shown} more</button>`;
+  }
+
+  async function loadMore(e, btn) {
+    const kind = btn.dataset.more;                 // "invites" | "rsvps"
+    const shown = parseInt(btn.dataset.shown, 10) || 0;
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+    try {
+      const page = await api(`/${kind}?offset=${shown}`);
+      const rowsEl = $(kind === "invites" ? "#invite-rows" : "#rsvp-rows");
+      const html = page.items.map((it) =>
+        kind === "invites" ? inviteRowHTML(it) : rsvpRowHTML(it, e.questions)).join("");
+      rowsEl.insertAdjacentHTML("beforeend", html);
+      rowsEl.querySelectorAll("[data-copy]:not([data-wired])").forEach((b) => {
+        b.dataset.wired = "1"; b.addEventListener("click", () => copy(b.dataset.copy));
+      });
+      const newShown = shown + page.items.length;
+      if (newShown >= page.total || !page.items.length) { btn.remove(); }
+      else { btn.dataset.shown = newShown; btn.disabled = false; btn.textContent = `Show ${page.total - newShown} more`; }
+    } catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = "Show more"; }
   }
 
   function questionsListHTML(questions) {
@@ -460,7 +498,7 @@
     const imgs = [...(e.images || [])].sort((a, b) => a.position - b.position);
     const tiles = imgs.map((im) => {
       const pos = im.is_cover ? `;background-position:${e.image_focal_x ?? 50}% ${e.image_focal_y ?? 50}%` : "";
-      return `<div class="gphoto" draggable="true" data-img="${im.id}" style="background-image:url('${esc(im.path)}')${pos}">
+      return `<div class="gphoto" draggable="true" data-img="${im.id}" style="background-image:url('${esc(im.thumb_path || im.path)}')${pos}">
         ${im.is_cover ? `<span class="cover-badge">Cover</span>` : ""}
         <div class="gphoto-actions">
           ${im.is_cover

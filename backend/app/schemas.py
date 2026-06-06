@@ -118,6 +118,7 @@ class InviteOut(BaseModel):
 class EventImageOut(BaseModel):
     id: int
     path: str
+    thumb_path: str | None = None
     position: int
     is_cover: bool
 
@@ -228,6 +229,7 @@ class EventOut(BaseModel):
     timezone: str | None
     host_display_name: str
     image_path: str | None
+    image_thumb_path: str | None = None
     image_fit: str
     image_focal_x: float = 50.0
     image_focal_y: float = 50.0
@@ -254,12 +256,32 @@ class QuickCreateResult(BaseModel):
 
 
 class EventDetail(EventOut):
+    # `invites`/`rsvps` carry only the first page (newest RSVPs first); the rest
+    # are fetched from the paginated /invites and /rsvps endpoints. The *_total
+    # fields are the full counts so the UI can show "(N)" and a "show more".
     invites: list[InviteOut] = []
+    invites_total: int = 0
     rsvps: list[RsvpOut] = []
+    rsvps_total: int = 0
     questions: list[QuestionOut] = []
     wall_posts: list[WallPostOut] = []
     cohosts: list[CohostOut] = []
     images: list[EventImageOut] = []
+
+
+# ── Pagination ───────────────────────────────────────────────────────────────
+class InvitePage(BaseModel):
+    items: list[InviteOut]
+    total: int
+    limit: int
+    offset: int
+
+
+class RsvpPage(BaseModel):
+    items: list[RsvpOut]
+    total: int
+    limit: int
+    offset: int
 
 
 # ── Broadcast ("message all guests") ─────────────────────────────────────────
@@ -341,6 +363,7 @@ class PublicEventOut(BaseModel):
     timezone: str | None
     host_display_name: str
     image_path: str | None
+    image_thumb_path: str | None = None
     image_fit: str
     image_focal_x: float = 50.0
     image_focal_y: float = 50.0

@@ -180,7 +180,7 @@
     // The "letter" that rises out is a mini of the real invitation: the host's
     // own image (Punchbowl-style) when there is one, else a typeset card.
     const letterInner = e.image_path
-      ? `<div class="el-photo" style="background-image:url('${esc(e.image_path)}')"></div>
+      ? `<div class="el-photo" style="background-image:url('${esc(e.image_thumb_path || e.image_path)}')"></div>
          <div class="el-overlay"><div class="el-title">${esc(e.title)}</div>
            <div class="el-host">${esc(e.host_display_name ? e.host_display_name + " invites you" : "You're invited")}</div></div>`
       : `<div class="el-text">
@@ -247,7 +247,7 @@
     const thumbs = extras.map((i) => {
       const all = galleryImages(e);
       const idx = all.indexOf(i.path);
-      return `<div class="gthumb" data-gidx="${idx}" style="background-image:url('${esc(i.path)}')"></div>`;
+      return `<div class="gthumb" data-gidx="${idx}" style="background-image:url('${esc(i.thumb_path || i.path)}')"></div>`;
     }).join("");
     return `<div class="wall-section"><h3 style="font-size:18px;margin:0 0 10px">Photos</h3>
       <div class="gallery-strip" id="gallery-strip">${thumbs}</div></div>`;

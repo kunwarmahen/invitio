@@ -75,12 +75,19 @@ reverse proxy.
 - **Installable PWA** — add invitio to your home screen; a service worker caches
   the app shell so the dashboard loads offline (network-first, so data/invites are
   never stale).
-- **Dashboard** — response counts, head count, full guest + response list.
+- **Dashboard** — response counts, head count, and a paginated guest + response
+  list ("Show more" loads the rest on demand for large events).
+- **Optimized images** — uploads are validated by their real bytes (not a
+  trusted Content-Type), auto-downsized + recompressed, and thumbnailed, so the
+  envelope and cards load a small file instead of a 12 MP phone photo.
+- **Anti-abuse rate limiting** — the open no-account flows (quick-create, RSVP,
+  guest wall) and auth are rate-limited per IP so they can't be trivially spammed
+  (configurable; off-switch in `.env`).
 
 ## Tech stack
 
 FastAPI · async SQLAlchemy 2 · SQLite (dev) / PostgreSQL (prod) · bcrypt + JWT ·
-Gmail SMTP · vanilla HTML/CSS/JS · Docker.
+Gmail SMTP · Pillow · vanilla HTML/CSS/JS · Docker · pytest.
 
 ## Quick start (local)
 
@@ -105,6 +112,18 @@ PYTHONPATH=backend uvicorn app.main:app --reload --port 8080
 
 > Emailing invites is optional. Without `GMAIL_APP_PASSWORD` set, the app still
 > creates events and links — you just copy and share them yourself.
+
+### Tests
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+cd backend && pytest
+```
+
+The suite (`backend/tests/`) runs against a throwaway SQLite DB via httpx's
+ASGITransport — no server or network needed. It covers auth, the RSVP/manage
+flows, invite-viewed tracking, the image pipeline (resize + magic-byte sniffing),
+pagination, and rate limiting.
 
 ### Asset cache-busting
 
@@ -169,6 +188,7 @@ Interactive docs at `/docs` when running. Summary:
 | POST/DELETE | `/api/events/{id}/images[/{img}]` | ✓ | add photos / delete one |
 | POST/PUT | `/api/events/{id}/images/{img}/cover` · `/images/order` | ✓ | set cover / reorder |
 | POST | `/api/events/{id}/invites` | ✓ | add guests + email links |
+| GET  | `/api/events/{id}/invites` · `/rsvps` | ✓ | paginated lists (`limit`/`offset`) |
 | GET  | `/api/events/{id}/summary` | ✓ | response counts |
 | GET  | `/api/public/event/{token}` | — | event by share link |
 | GET  | `/api/public/invite/{token}` | — | event by personal link (prefilled) |
@@ -189,9 +209,11 @@ invitio/
 ├── docker-compose.yml       local dev (SQLite, :8080)
 ├── docker-compose.nas.yml   NAS (postgres + nginx, :18080)
 ├── Dockerfile · docker-entrypoint.sh · nginx/
-├── requirements.txt · .env.example
+├── requirements.txt · requirements-dev.txt · .env.example
 ├── backend/app/             FastAPI: models, schemas, auth, email_service,
-│                            event_service, routers/{auth,events,manage,rsvp}
+│                            event_service, image_service, rate_limit,
+│                            routers/{auth,events,manage,rsvp,ai}
+├── backend/tests/           pytest suite (auth, RSVP/manage, images, limits)
 ├── frontend/                index.html (host) · quick.html · manage.html ·
 │                            rsvp.html (guest) · css · js
 └── local_docs/PLAN.md       design + scope (git-ignored, local only)

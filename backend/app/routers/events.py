@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import or_, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import event_service
 from app.auth import get_current_user, new_token
+from app.config import settings
 from app.database import get_db
 from app.email_service import email_configured
 from app.models import Event, EventCohost, Rsvp, User
@@ -22,9 +23,12 @@ from app.schemas import (
     EventSummary,
     EventUpdate,
     InviteOut,
+    InvitePage,
     QuestionOut,
     QuestionsUpdate,
     ReorderImagesRequest,
+    RsvpOut,
+    RsvpPage,
 )
 
 router = APIRouter(prefix="/api/events", tags=["events"])
@@ -65,7 +69,21 @@ async def _load_event(event_id: int, user: User, db: AsyncSession, *, owner_only
 def _detail(event: Event, user: User) -> EventDetail:
     detail = EventDetail.model_validate(event)  # cohosts auto-map via EventCohost.email/name
     detail.is_owner = _is_owner(event, user)
+    event_service.cap_detail(detail, event)  # embed only the first page of invites/rsvps
     return detail
+
+
+async def _load_event_slim(event_id: int, user: User, db: AsyncSession) -> Event:
+    """Lightweight load for the paginated list endpoints: just enough to check the
+    user may manage the event, without eager-loading every invite/RSVP."""
+    event = (
+        await db.execute(
+            select(Event).where(Event.id == event_id).options(selectinload(Event.cohosts))
+        )
+    ).scalar_one_or_none()
+    if not event or not _can_manage(event, user):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+    return event
 
 
 @router.post("", response_model=EventOut, status_code=status.HTTP_201_CREATED)
@@ -113,6 +131,34 @@ async def list_events(user: User = Depends(get_current_user), db: AsyncSession =
 @router.get("/{event_id}", response_model=EventDetail)
 async def get_event(event_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     return _detail(await _load_event(event_id, user, db), user)
+
+
+@router.get("/{event_id}/invites", response_model=InvitePage)
+async def list_invites(
+    event_id: int,
+    limit: int = Query(default=None, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    event = await _load_event_slim(event_id, user, db)
+    limit = limit or settings.list_page_size
+    items, total = await event_service.fetch_invite_page(event.id, db, limit, offset)
+    return InvitePage(items=[InviteOut.model_validate(i) for i in items], total=total, limit=limit, offset=offset)
+
+
+@router.get("/{event_id}/rsvps", response_model=RsvpPage)
+async def list_rsvps(
+    event_id: int,
+    limit: int = Query(default=None, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    event = await _load_event_slim(event_id, user, db)
+    limit = limit or settings.list_page_size
+    items, total = await event_service.fetch_rsvp_page(event.id, db, limit, offset)
+    return RsvpPage(items=[RsvpOut.model_validate(r) for r in items], total=total, limit=limit, offset=offset)
 
 
 @router.put("/{event_id}", response_model=EventOut)

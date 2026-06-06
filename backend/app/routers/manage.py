@@ -5,12 +5,12 @@
 that event by presenting the token instead of a JWT — the same operations the
 authenticated host router offers.
 """
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import ai_service, event_service
+from app import ai_service, event_service, rate_limit
 from app.auth import new_token
 from app.config import settings
 from app.database import get_db
@@ -29,11 +29,14 @@ from app.schemas import (
     EventSummary,
     EventUpdate,
     InviteOut,
+    InvitePage,
     QuestionOut,
     QuestionsUpdate,
     QuickCreate,
     QuickCreateResult,
     ReorderImagesRequest,
+    RsvpOut,
+    RsvpPage,
 )
 
 router = APIRouter(prefix="/api/public", tags=["public"])
@@ -59,8 +62,20 @@ async def _load_managed(token: str, db: AsyncSession) -> Event:
     return event
 
 
+async def _load_managed_slim(token: str, db: AsyncSession) -> Event:
+    """Lightweight token lookup for the paginated list endpoints (no eager-loading
+    of every invite/RSVP). The token itself is the authorization."""
+    event = (
+        await db.execute(select(Event).where(Event.manage_token == token))
+    ).scalar_one_or_none()
+    if not event:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found or link expired")
+    return event
+
+
 @router.post("/events", response_model=QuickCreateResult, status_code=status.HTTP_201_CREATED)
-async def quick_create(body: QuickCreate, db: AsyncSession = Depends(get_db)):
+async def quick_create(body: QuickCreate, request: Request, db: AsyncSession = Depends(get_db)):
+    rate_limit.check(request, "create", settings.rate_limit_create_per_hour)
     host_email = str(body.host_email).lower().strip() if body.host_email else None
     event = Event(
         host_id=None,
@@ -104,7 +119,36 @@ async def quick_create(body: QuickCreate, db: AsyncSession = Depends(get_db)):
 
 @router.get("/manage/{token}", response_model=EventDetail)
 async def manage_get(token: str, db: AsyncSession = Depends(get_db)):
-    return EventDetail.model_validate(await _load_managed(token, db))
+    event = await _load_managed(token, db)
+    detail = EventDetail.model_validate(event)
+    event_service.cap_detail(detail, event)  # embed only the first page of invites/rsvps
+    return detail
+
+
+@router.get("/manage/{token}/invites", response_model=InvitePage)
+async def manage_list_invites(
+    token: str,
+    limit: int = Query(default=None, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    event = await _load_managed_slim(token, db)
+    limit = limit or settings.list_page_size
+    items, total = await event_service.fetch_invite_page(event.id, db, limit, offset)
+    return InvitePage(items=[InviteOut.model_validate(i) for i in items], total=total, limit=limit, offset=offset)
+
+
+@router.get("/manage/{token}/rsvps", response_model=RsvpPage)
+async def manage_list_rsvps(
+    token: str,
+    limit: int = Query(default=None, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    event = await _load_managed_slim(token, db)
+    limit = limit or settings.list_page_size
+    items, total = await event_service.fetch_rsvp_page(event.id, db, limit, offset)
+    return RsvpPage(items=[RsvpOut.model_validate(r) for r in items], total=total, limit=limit, offset=offset)
 
 
 @router.put("/manage/{token}", response_model=EventOut)

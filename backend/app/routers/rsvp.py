@@ -6,12 +6,12 @@ event; an invite token additionally prefills/links the guest's response.
 """
 import datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import event_service
+from app import event_service, rate_limit
 from app.config import settings
 from app.database import get_db
 from app.email_service import email_configured, send_host_rsvp_notification
@@ -82,6 +82,7 @@ def _public_event(event: Event, invite: Invite | None, existing: Rsvp | None) ->
         timezone=event.timezone,
         host_display_name=event.host_display_name,
         image_path=event.image_path,
+        image_thumb_path=event.image_thumb_path,
         image_fit=event.image_fit,
         image_focal_x=event.image_focal_x,
         image_focal_y=event.image_focal_y,
@@ -128,8 +129,10 @@ async def submit_rsvp(
     token: str,
     body: RsvpSubmit,
     background: BackgroundTasks,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
+    rate_limit.check(request, "rsvp", settings.rate_limit_rsvp_per_hour)
     event, invite = await _resolve_token(token, db)
 
     party_size = body.party_size if (event.allow_plus_ones and body.status == "yes") else 1
@@ -216,7 +219,8 @@ async def _notify_host(**kwargs) -> None:
 
 
 @router.post("/wall/{token}", response_model=WallPostOut)
-async def post_to_wall(token: str, body: WallPostCreate, db: AsyncSession = Depends(get_db)):
+async def post_to_wall(token: str, body: WallPostCreate, request: Request, db: AsyncSession = Depends(get_db)):
+    rate_limit.check(request, "wall", settings.rate_limit_wall_per_hour)
     event, _ = await _resolve_token(token, db)
     if not event.wall_enabled:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="The guest wall is closed for this event")

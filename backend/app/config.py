@@ -24,6 +24,20 @@ class Settings(BaseSettings):
     upload_dir: str = "./uploads"
     max_upload_mb: int = 10
 
+    # Anti-abuse rate limiting on the open, no-account endpoints (per client IP,
+    # fixed 1-hour window). In-memory, single-instance; a no-op when disabled.
+    # Set the limit to 0 to disable an individual bucket.
+    rate_limit_enabled: bool = True
+    rate_limit_create_per_hour: int = 10   # quick-create events
+    rate_limit_rsvp_per_hour: int = 60     # RSVP submissions
+    rate_limit_wall_per_hour: int = 30     # guest-wall posts
+    rate_limit_auth_per_hour: int = 30     # signup + login attempts
+
+    # Page size for the guest-list / RSVP lists on the dashboard. The event detail
+    # embeds (at most) this many of each; the rest are fetched on demand from the
+    # paginated /invites and /rsvps endpoints.
+    list_page_size: int = 50
+
     # Absolute base URL used to build RSVP links inside outbound emails. Without
     # it the app falls back to relative links, which don't work in email.
     public_base_url: str = "http://localhost:8080"

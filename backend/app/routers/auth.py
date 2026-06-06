@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import rate_limit
 from app.auth import create_access_token, get_current_user, hash_password, verify_password
+from app.config import settings
 from app.database import get_db
 from app.models import User
 from app.schemas import LoginRequest, SignupRequest, TokenResponse, UserOut
@@ -11,7 +13,8 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 @router.post("/signup", response_model=TokenResponse)
-async def signup(body: SignupRequest, db: AsyncSession = Depends(get_db)):
+async def signup(body: SignupRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    rate_limit.check(request, "auth", settings.rate_limit_auth_per_hour)
     email = body.email.lower().strip()
     existing = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
     if existing:
@@ -25,7 +28,8 @@ async def signup(body: SignupRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    rate_limit.check(request, "auth", settings.rate_limit_auth_per_hour)
     email = body.email.lower().strip()
     user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
     if not user or not verify_password(body.password, user.password_hash):

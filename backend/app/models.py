@@ -55,6 +55,10 @@ class Event(Base):
     # this column stays so the OG-tag/email/envelope/thumbnail read-paths keep
     # working with a single cheap field. Null when the event has no images.
     image_path: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Denormalized mirror of the cover EventImage's thumbnail (kept in sync by
+    # _sync_cover). Served for host cards + the envelope so they load a small file
+    # instead of the full hero. Null for the legacy/no-image case.
+    image_thumb_path: Mapped[str | None] = mapped_column(String, nullable=True)
     # How the invite image is displayed: "contain" (default) shows the whole
     # image over a blurred backdrop; "cover" crops it to fill the hero.
     image_fit: Mapped[str] = mapped_column(String, default="contain")
@@ -131,6 +135,10 @@ class EventImage(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), index=True, nullable=False)
     path: Mapped[str] = mapped_column(String, nullable=False)
+    # Small thumbnail generated at upload time; served for cards/the envelope.
+    # Null for legacy rows uploaded before thumbnails existed (read-paths fall
+    # back to `path`).
+    thumb_path: Mapped[str | None] = mapped_column(String, nullable=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
     is_cover: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=_utcnow)
