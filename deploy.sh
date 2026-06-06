@@ -15,12 +15,29 @@
 #   ./deploy.sh nas logs             — tail NAS logs
 #   ./deploy.sh nas shell            — shell into the NAS app container
 #
+# `nas deploy` asks whether to bundle a NEW postgres container or reuse an
+# EXISTING postgres instance, then deploys only the containers that mode needs
+# (app + nginx + db, or app + nginx pointed at your existing DB).
+#
 # NAS connection (env vars):
 #   export NAS_HOST=192.168.1.100
 #   export NAS_USER=admin                          (default: current user)
 #   export NAS_PATH=/volume1/docker/invitio        (default: ~/invitio)
 #   export NAS_SSH_KEY=~/.ssh/id_rsa               (default: SSH agent / default key)
 #   export NAS_SSH_PORT=22
+#   export NAS_HTTP_PORT=18081                      (nginx host port; default 18080 —
+#                                                    change if another app's nginx has it)
+#
+# Database choice (env vars — set to skip the interactive prompt):
+#   export NAS_DB_MODE=new                         (bundle a fresh postgres; default)
+#   export NAS_DB_MODE=existing                    (reuse an existing postgres, then:)
+#     export NAS_DB_HOST=db-container-or-ip        (required)
+#     export NAS_DB_PORT=5432                      (default 5432)
+#     export NAS_DB_NAME=invitio                   (default invitio)
+#     export NAS_DB_USER=invitio                   (default invitio)
+#     export NAS_DB_PASSWORD=...                   (required)
+#     export NAS_DB_NETWORK=shared-net             (only if the DB is a container on
+#                                                   a shared Docker network)
 #
 # Example:
 #   NAS_HOST=192.168.1.100 NAS_USER=admin ./deploy.sh nas deploy
@@ -58,8 +75,28 @@ NAS_SSH_KEY="${NAS_SSH_KEY:-}"
 NAS_SSH_PORT="${NAS_SSH_PORT:-22}"
 NAS_SSH_CTL="/tmp/.invitio-ssh-$$"       # ControlMaster socket — one password prompt per deploy
 
+# Database choice for `nas deploy`. Leave NAS_DB_MODE unset to be prompted, or set
+# it to skip the prompt in scripted runs:
+#   NAS_DB_MODE=new        bundle a fresh postgres container (default)
+#   NAS_DB_MODE=existing   reuse an existing postgres; supply the rest below
+#     NAS_DB_HOST      DB host — container/service name or IP   (required)
+#     NAS_DB_PORT      DB port                                  (default 5432)
+#     NAS_DB_NAME      database name                            (default invitio)
+#     NAS_DB_USER      username                                 (default invitio)
+#     NAS_DB_PASSWORD  password                                 (required)
+#     NAS_DB_NETWORK   shared Docker network the DB container is on, so the app
+#                      can reach it by name (blank if DB is reachable by IP/host)
+NAS_DB_MODE="${NAS_DB_MODE:-}"
+
 COMPOSE_LOCAL="docker-compose.yml"
-COMPOSE_NAS="docker-compose.nas.yml"
+COMPOSE_NAS="docker-compose.nas.yml"               # bundled postgres
+COMPOSE_NAS_EXTDB="docker-compose.nas-extdb.yml"   # reuse external postgres (app + nginx)
+COMPOSE_NAS_EXTDB_NET="docker-compose.nas-extdb-net.yml"  # override: join shared DB network
+
+# Set by gather_db_choice / gather_external_db before a nas deploy.
+DB_MODE=""
+EXT_DB_URL=""
+EXT_DB_NETWORK=""
 
 # ── runtime detection ─────────────────────────────────────────────────────────
 detect_runtime() {
@@ -112,6 +149,71 @@ nas_scp() {
 
 check_env() { [ -f .env ] || die ".env not found. Run: cp .env.example .env  then fill in your values."; }
 
+# ── database choice (nas deploy) ───────────────────────────────────────────────
+# Ask whether to bundle a fresh postgres or reuse an existing one, then gather the
+# connection details for the "existing" case. Honours the NAS_DB_* env vars so the
+# whole thing can run unattended. Sets DB_MODE / EXT_DB_URL / EXT_DB_NETWORK.
+gather_db_choice() {
+    case "$NAS_DB_MODE" in
+        new|existing) DB_MODE="$NAS_DB_MODE" ;;
+        "")
+            echo ""
+            info "PostgreSQL for this deployment:"
+            echo "  1) Create a NEW postgres container   (bundled with the app — default)"
+            echo "  2) Reuse an EXISTING postgres instance"
+            local ans; read -rp "Choose [1/2] (default 1): " ans
+            case "${ans:-1}" in
+                1) DB_MODE="new" ;;
+                2) DB_MODE="existing" ;;
+                *) die "Invalid choice: '$ans'. Pick 1 or 2." ;;
+            esac ;;
+        *) die "NAS_DB_MODE must be 'new' or 'existing' (got '$NAS_DB_MODE')." ;;
+    esac
+
+    if [ "$DB_MODE" = "new" ]; then
+        ok "Database: bundled postgres container (${COMPOSE_NAS})."
+        return
+    fi
+
+    # ── existing instance: collect connection details ──
+    ok "Database: reusing an existing postgres instance (${COMPOSE_NAS_EXTDB})."
+    local host="${NAS_DB_HOST:-}" port="${NAS_DB_PORT:-5432}"
+    local name="${NAS_DB_NAME:-invitio}" user="${NAS_DB_USER:-invitio}"
+    local pass="${NAS_DB_PASSWORD:-}" net="${NAS_DB_NETWORK:-}" ans
+    if [ -z "$host" ]; then read -rp "  Postgres host (DB container/service name or IP): " host; fi
+    [ -n "$host" ] || die "A postgres host is required to reuse an existing instance."
+    if [ -z "${NAS_DB_PORT:-}" ];     then read -rp "  Port [5432]: " ans;          port="${ans:-5432}";   fi
+    if [ -z "${NAS_DB_NAME:-}" ];     then read -rp "  Database name [invitio]: " ans; name="${ans:-invitio}"; fi
+    if [ -z "${NAS_DB_USER:-}" ];     then read -rp "  Username [invitio]: " ans;    user="${ans:-invitio}"; fi
+    if [ -z "$pass" ];                then read -rsp "  Password: " pass; echo; fi
+    [ -n "$pass" ] || die "A postgres password is required."
+    if [ -z "${NAS_DB_NETWORK:-}" ]; then
+        read -rp "  Shared Docker network the DB is on (blank if reachable by IP/host): " net
+    fi
+    case "$pass" in
+        *[:@/]*) warn "Password contains a ':', '@' or '/' — embedded raw in DATABASE_URL; URL-encode it in .env if the app can't connect." ;;
+    esac
+    EXT_DB_URL="postgresql+asyncpg://${user}:${pass}@${host}:${port}/${name}"
+    EXT_DB_NETWORK="$net"
+    info "DATABASE_URL → postgresql+asyncpg://${user}:***@${host}:${port}/${name}"
+    [ -n "$net" ] && info "App will join shared Docker network: ${net}"
+}
+
+# write_env_override SRC OUT KEY=VAL [KEY=VAL...] — copy SRC to OUT, replacing (or
+# appending) each KEY's line. Used to inject the external DATABASE_URL into the
+# shipped .env without touching the developer's local .env.
+write_env_override() {
+    local src="$1" out="$2"; shift 2
+    cp "$src" "$out"
+    local pair key
+    for pair in "$@"; do
+        key="${pair%%=*}"
+        grep -vE "^[[:space:]]*${key}=" "$out" > "${out}.t" 2>/dev/null || true
+        mv "${out}.t" "$out"
+        printf '%s\n' "$pair" >> "$out"
+    done
+}
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  LOCAL
 # ══════════════════════════════════════════════════════════════════════════════
@@ -163,9 +265,16 @@ local_clean() {
 #  NAS
 # ══════════════════════════════════════════════════════════════════════════════
 nas_deploy() {
-    banner "NAS deploy ($COMPOSE_NAS)"
+    banner "NAS deploy"
     require_nas_host
     check_env
+
+    # Ask (or read NAS_DB_* env) which postgres to use, and collect details. Done
+    # before the SSH connection so prompts aren't tangled with connection output.
+    gather_db_choice
+
+    local compose_file="$COMPOSE_NAS"
+    [ "$DB_MODE" = "existing" ] && compose_file="$COMPOSE_NAS_EXTDB"
 
     nas_ssh_open
     trap nas_ssh_close EXIT
@@ -181,15 +290,48 @@ nas_deploy() {
     ok "Image exported ($(du -sh "$tarfile" | cut -f1))"
 
     info "Preparing remote path ${NAS_PATH} on ${NAS_HOST} …"
-    nas_ssh "mkdir -p '${NAS_PATH}/nginx' '${NAS_PATH}/uploads' '${NAS_PATH}/postgres-data'"
+    if [ "$DB_MODE" = "new" ]; then
+        nas_ssh "mkdir -p '${NAS_PATH}/nginx' '${NAS_PATH}/uploads' '${NAS_PATH}/postgres-data'"
+    else
+        nas_ssh "mkdir -p '${NAS_PATH}/nginx' '${NAS_PATH}/uploads'"
+    fi
 
     info "Transferring image to NAS …"
     nas_scp "$tarfile" "${NAS_PATH}/"
 
-    info "Syncing compose + config …"
-    nas_scp "$COMPOSE_NAS"          "${NAS_PATH}/docker-compose.yml"
-    nas_scp ".env"                  "${NAS_PATH}/.env"
+    info "Syncing compose + config (db mode: ${DB_MODE}) …"
+    nas_scp "$compose_file"          "${NAS_PATH}/docker-compose.yml"
     nas_scp "nginx/nginx-nossl.conf" "${NAS_PATH}/nginx/nginx-nossl.conf"
+
+    # Build the .env to ship: start from the local .env and override only what
+    # this deploy needs, so the developer's local file is never clobbered.
+    local -a env_overrides=()
+    if [ "$DB_MODE" = "existing" ]; then
+        env_overrides+=(
+            "DATABASE_PROVIDER=postgres"
+            "DATABASE_URL=${EXT_DB_URL}"
+            "NAS_DB_NETWORK=${EXT_DB_NETWORK}"   # for the override's ${NAS_DB_NETWORK} substitution
+        )
+    fi
+    # nginx host port — override when 18080 collides with another app's nginx.
+    [ -n "${NAS_HTTP_PORT:-}" ] && env_overrides+=("INVITIO_HTTP_PORT=${NAS_HTTP_PORT}")
+
+    if [ ${#env_overrides[@]} -gt 0 ]; then
+        local tmpenv; tmpenv="$(mktemp)"
+        write_env_override .env "$tmpenv" "${env_overrides[@]}"
+        nas_scp "$tmpenv" "${NAS_PATH}/.env"
+        rm -f "$tmpenv"
+    else
+        nas_scp ".env" "${NAS_PATH}/.env"
+    fi
+
+    # Network override: only when reusing a DB on a shared Docker network.
+    if [ "$DB_MODE" = "existing" ] && [ -n "$EXT_DB_NETWORK" ]; then
+        nas_scp "$COMPOSE_NAS_EXTDB_NET" "${NAS_PATH}/docker-compose.override.yml"
+    else
+        # Drop any override left from a previous external-db deploy.
+        nas_ssh "rm -f '${NAS_PATH}/docker-compose.override.yml'"
+    fi
 
     info "Loading image on NAS and starting containers …"
     nas_ssh -t "
@@ -209,8 +351,14 @@ nas_deploy() {
     nas_ssh_close
     trap - EXIT
 
+    local http_port="${NAS_HTTP_PORT:-18080}"
     echo ""; ok "Deployed to NAS (${NAS_HOST})"
-    ok "App → via Asustor reverse proxy → ${NAS_HOST}:18080"
+    if [ "$DB_MODE" = "existing" ]; then
+        ok "Database: existing postgres instance (no db container deployed)"
+    else
+        ok "Database: bundled postgres container (data in ${NAS_PATH}/postgres-data)"
+    fi
+    ok "nginx listening on 127.0.0.1:${http_port} — point the Asustor reverse proxy rule here"
     info "Logs: ./deploy.sh nas logs   |   Stop: ./deploy.sh nas down"
 }
 
@@ -253,6 +401,7 @@ ${BOLD}LOCAL (Docker / Podman)${RESET}
 
 ${BOLD}NAS (remote Docker over SSH)${RESET}
   ./deploy.sh nas deploy      Build + ship to NAS, start behind Asustor reverse proxy
+                              (asks: bundle a new postgres, or reuse an existing one)
   ./deploy.sh nas up          (Re)start on NAS without rebuilding
   ./deploy.sh nas down        Stop containers on NAS
   ./deploy.sh nas logs        Tail NAS logs
@@ -264,10 +413,23 @@ ${BOLD}NAS CONFIGURATION${RESET}  (env vars)
   NAS_PATH      Remote deploy directory      (default: ~/invitio)
   NAS_SSH_KEY   Path to SSH private key      (default: SSH agent key)
   NAS_SSH_PORT  SSH port                     (default: 22)
+  NAS_HTTP_PORT nginx host port on the NAS   (default: 18080; change on a clash)
+
+${BOLD}DATABASE${RESET}  (env vars — set to skip the deploy-time prompt)
+  NAS_DB_MODE   new | existing               (default: prompt; 'new' = bundled postgres)
+  NAS_DB_HOST   existing DB host / container  (required when NAS_DB_MODE=existing)
+  NAS_DB_PORT   existing DB port             (default: 5432)
+  NAS_DB_NAME   existing database name       (default: invitio)
+  NAS_DB_USER   existing DB user             (default: invitio)
+  NAS_DB_PASSWORD  existing DB password      (required when NAS_DB_MODE=existing)
+  NAS_DB_NETWORK   shared Docker network the DB container is on (optional)
 
 ${BOLD}EXAMPLES${RESET}
   ./deploy.sh local up
   NAS_HOST=192.168.1.100 ./deploy.sh nas deploy
+  # unattended, reuse an existing postgres container on a shared network:
+  NAS_HOST=192.168.1.100 NAS_DB_MODE=existing NAS_DB_HOST=pg \\
+    NAS_DB_PASSWORD=secret NAS_DB_NETWORK=db-net ./deploy.sh nas deploy
 EOF
 }
 

@@ -142,21 +142,64 @@ NAS_HOST=192.168.1.100 NAS_USER=admin NAS_PATH=/volume1/docker/invitio \
 ```
 
 This builds the image locally, `docker save | ssh`-es it to the NAS, loads it,
-and starts `app + nginx + postgres` via `docker-compose.nas.yml`. nginx listens
-on `127.0.0.1:18080`; point an Asustor **Reverse Proxy** rule (HTTPS :443 →
-HTTP 127.0.0.1:18080) at it. See the header of
-[docker-compose.nas.yml](docker-compose.nas.yml) for the one-time ADM setup.
+and starts the containers. nginx listens on `127.0.0.1:18080`; point an Asustor
+**Reverse Proxy** rule (HTTPS :443 → HTTP 127.0.0.1:18080) at it. See the header
+of [docker-compose.nas.yml](docker-compose.nas.yml) for the one-time ADM setup.
+
+> Running another app's nginx on the NAS already (e.g. calorieapp on 18080)?
+> Give invitio its own port: `NAS_HTTP_PORT=18081 ./deploy.sh nas deploy` (or set
+> `INVITIO_HTTP_PORT` in `.env`), then point invitio's reverse-proxy rule at
+> `127.0.0.1:18081`. Each app keeps its own nginx + its own proxy rule.
+
+### PostgreSQL: new or existing
+
+`nas deploy` asks which database to use and deploys only the containers that mode
+needs:
+
+- **Create a new postgres container** (default) — deploys `app + nginx + postgres`
+  via [docker-compose.nas.yml](docker-compose.nas.yml); the DB lives in the
+  bind-mounted `./postgres-data`. Just set `POSTGRES_PASSWORD` in `.env`.
+- **Reuse an existing postgres instance** — deploys only `app + nginx` via
+  [docker-compose.nas-extdb.yml](docker-compose.nas-extdb.yml) and points
+  `DATABASE_URL` at your existing database. You'll be prompted for host, port,
+  database, user, and password. The instance must be reachable from the app
+  container — by host/LAN address, or, if it's another Docker container, supply
+  the **shared Docker network** when asked so the app can reach it by container
+  name. Create the database + user first:
+
+  ```sql
+  CREATE USER invitio WITH PASSWORD '...';
+  CREATE DATABASE invitio OWNER invitio;
+  ```
+
+Set the `NAS_DB_*` env vars to skip the prompt for unattended deploys:
+
+```bash
+NAS_HOST=192.168.1.100 NAS_DB_MODE=existing NAS_DB_HOST=pg \
+  NAS_DB_PASSWORD=secret NAS_DB_NETWORK=db-net ./deploy.sh nas deploy
+```
+
+Run `./deploy.sh` with no args for the full list (`NAS_DB_MODE`, `NAS_DB_HOST`,
+`NAS_DB_PORT`, `NAS_DB_NAME`, `NAS_DB_USER`, `NAS_DB_PASSWORD`, `NAS_DB_NETWORK`).
+
+For a worked example against a postgres container from another stack (sharing the
+calorieapp DB), see
+[REUSE_EXISTING_POSTGRES.md](REUSE_EXISTING_POSTGRES.md).
 
 Before the first NAS deploy, set in `.env`:
 
 ```ini
 JWT_SECRET_KEY=<python -c "import secrets;print(secrets.token_urlsafe(48))">
-POSTGRES_PASSWORD=<strong-password>
+POSTGRES_PASSWORD=<strong-password>   # only for a NEW bundled postgres; ignored when reusing one
 PUBLIC_BASE_URL=https://invite.mahensingh.ddns.info
 ALLOWED_ORIGINS=["https://invite.mahensingh.ddns.info"]
 GMAIL_ADDRESS=you@gmail.com          # optional
 GMAIL_APP_PASSWORD=xxxxxxxxxxxxxxxx   # optional (App Password, not your login)
 ```
+
+> Reusing an existing postgres? You don't need `POSTGRES_PASSWORD` — `deploy.sh`
+> writes the full `DATABASE_URL` into the deployed `.env` from the details you
+> give at the prompt (your local `.env` is left untouched).
 
 `deploy.sh nas {deploy|up|down|logs|shell}` — run `./deploy.sh` with no args for
 the full help.
@@ -169,7 +212,11 @@ updates:
 | Path             | Holds                          |
 |------------------|--------------------------------|
 | `./uploads`      | uploaded invite images         |
-| `./postgres-data`| the PostgreSQL database         |
+| `./postgres-data`| the PostgreSQL database (bundled postgres only) |
+
+`./postgres-data` is only created/used when you deploy a **new** bundled postgres.
+When reusing an existing instance, persistence is whatever that database already
+has — invitio only bind-mounts `./uploads`.
 
 Locally (`docker-compose.yml`), `./data` holds the SQLite file and `./uploads`
 the images.
@@ -205,9 +252,11 @@ Calendar" links (Google + `.ics`) are generated client-side on the RSVP page.
 
 ```
 invitio/
-├── deploy.sh                local + NAS deploy
+├── deploy.sh                local + NAS deploy (prompts: new vs existing postgres)
 ├── docker-compose.yml       local dev (SQLite, :8080)
-├── docker-compose.nas.yml   NAS (postgres + nginx, :18080)
+├── docker-compose.nas.yml   NAS, new bundled postgres (app + nginx + db, :18080)
+├── docker-compose.nas-extdb.yml      NAS, reuse an existing postgres (app + nginx)
+├── docker-compose.nas-extdb-net.yml  override: join the DB's shared Docker network
 ├── Dockerfile · docker-entrypoint.sh · nginx/
 ├── requirements.txt · requirements-dev.txt · .env.example
 ├── backend/app/             FastAPI: models, schemas, auth, email_service,

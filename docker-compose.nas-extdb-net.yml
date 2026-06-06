@@ -1,0 +1,18 @@
+# Auto-merged override, shipped by deploy.sh as docker-compose.override.yml ONLY
+# when reusing a PostgreSQL container that lives on a shared Docker network
+# (i.e. you set NAS_DB_NETWORK). It attaches the app to that external network so
+# it can reach the database by its container/service name.
+#
+# NAS_DB_NETWORK is read from .env (deploy.sh writes it there) for substitution.
+# Paired with docker-compose.nas-extdb.yml — not used on its own.
+
+services:
+  app:
+    networks:
+      - backend
+      - dbshared
+
+networks:
+  dbshared:
+    external: true
+    name: ${NAS_DB_NETWORK}

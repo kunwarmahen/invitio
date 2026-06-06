@@ -1,5 +1,10 @@
-# Asustor NAS deployment — Asustor reverse proxy terminates SSL (ports 80/443),
-# this stack listens on localhost:18080 (HTTP). Mirrors the calorieapp setup.
+# Asustor NAS deployment — bundles its OWN postgres container (app + nginx + db).
+# Asustor reverse proxy terminates SSL (ports 80/443); this stack listens on
+# localhost:18080 (HTTP). Mirrors the calorieapp setup.
+#
+# `./deploy.sh nas deploy` uses this file when you choose "create a new postgres"
+# (the default). To REUSE an existing postgres instead, deploy.sh uses
+# docker-compose.nas-extdb.yml — see that file's header.
 #
 # Architecture:
 #   Internet → Asustor Reverse Proxy (443, Let's Encrypt) → nginx (localhost:18080) → app:8000
@@ -43,7 +48,9 @@ services:
   nginx:
     image: nginx:alpine
     ports:
-      - "127.0.0.1:18080:80"     # localhost only — Asustor reverse proxy forwards here
+      # localhost only — Asustor reverse proxy forwards here. Override the port via
+      # INVITIO_HTTP_PORT in .env when 18080 is taken (e.g. by another app's nginx).
+      - "127.0.0.1:${INVITIO_HTTP_PORT:-18080}:80"
     volumes:
       - ./nginx/nginx-nossl.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
