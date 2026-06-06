@@ -30,7 +30,8 @@ reverse proxy.
   Card tags (title, description, invite image), so pasting one into
   iMessage/WhatsApp/Facebook/Slack unfurls with the actual invite.
 - **RSVP without login** — yes / maybe / no, party size (+1s), and a note.
-  Re-submitting updates the existing response instead of duplicating it.
+  Re-submitting updates the existing response instead of duplicating it. A
+  "yes" gets a celebratory confetti burst (skipped under reduced-motion).
 - **Host RSVP notifications** — the host gets an email the moment a guest
   responds (works for both account and quick-create events).
 - **Reminder emails** — a background loop emails a reminder to "yes" guests and

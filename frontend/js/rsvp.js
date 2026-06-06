@@ -283,6 +283,45 @@
     }
   }
 
+  // Celebratory confetti burst on a "yes" — pure canvas, no dependencies.
+  // Honours reduced-motion (callers skip it) and cleans itself up when done.
+  function confettiBurst() {
+    const colors = ["#7c3aed", "#f472b6", "#fbbf24", "#34d399", "#60a5fa", "#fb7185"];
+    const canvas = document.createElement("canvas");
+    canvas.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:9999";
+    canvas.width = innerWidth; canvas.height = innerHeight;
+    document.body.appendChild(canvas);
+    const ctx = canvas.getContext("2d");
+    const DURATION = 2600;
+    const pieces = Array.from({ length: 130 }, () => ({
+      x: innerWidth / 2 + (Math.random() - 0.5) * 140,
+      y: innerHeight / 3,
+      vx: (Math.random() - 0.5) * 14,
+      vy: Math.random() * -16 - 4,
+      size: Math.random() * 6 + 4,
+      color: colors[(Math.random() * colors.length) | 0],
+      rot: Math.random() * Math.PI,
+      vr: (Math.random() - 0.5) * 0.3,
+    }));
+    const start = performance.now();
+    (function frame(now) {
+      const elapsed = now - start;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.globalAlpha = Math.max(0, 1 - elapsed / DURATION);
+      for (const p of pieces) {
+        p.vy += 0.5;                 // gravity
+        p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+        ctx.save();
+        ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+        ctx.restore();
+      }
+      if (elapsed < DURATION) requestAnimationFrame(frame);
+      else canvas.remove();
+    })(start);
+  }
+
   function showConfirm(status, name) {
     const map = {
       yes: { em: "🎉", h: "You're going!", p: "We've let the host know. See you there!" },
@@ -298,7 +337,10 @@
       <div style="display:flex;justify-content:center">${cal}</div>
       <button class="btn btn-line btn-sm" style="margin-top:18px" id="edit-again">Change my response</button>
     </div>`;
-    if (status === "yes") wireCalendar();
+    if (status === "yes") {
+      wireCalendar();
+      if (!reducedMotion) confettiBurst();
+    }
     $("#edit-again").addEventListener("click", () => load(true));
   }
 
