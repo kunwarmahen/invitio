@@ -134,6 +134,12 @@ ASGITransport — no server or network needed. It covers auth, the RSVP/manage
 flows, open tracking (the view beacon's IP log + the email-open pixel), the image
 pipeline (resize + magic-byte sniffing), pagination, and rate limiting.
 
+> **SQLite-only caveat.** Because the tests use SQLite, Postgres-specific issues
+> aren't caught — e.g. SQLite accepts tz-aware datetimes while asyncpg rejects
+> them for the naive (`TIMESTAMP WITHOUT TIME ZONE`) columns. The app stores
+> **naive UTC** everywhere for this reason; keep new `datetime` writes naive
+> (`...replace(tzinfo=None)`).
+
 ### Asset cache-busting
 
 `deploy.sh` bakes a `BUILD_VERSION` (git sha + timestamp) into the image and the
@@ -190,10 +196,6 @@ NAS_HOST=192.168.1.100 NAS_DB_MODE=existing NAS_DB_HOST=pg \
 
 Run `./deploy.sh` with no args for the full list (`NAS_DB_MODE`, `NAS_DB_HOST`,
 `NAS_DB_PORT`, `NAS_DB_NAME`, `NAS_DB_USER`, `NAS_DB_PASSWORD`, `NAS_DB_NETWORK`).
-
-For a worked example against a postgres container from another stack (sharing the
-calorieapp DB), see
-[REUSE_EXISTING_POSTGRES.md](REUSE_EXISTING_POSTGRES.md).
 
 Before the first NAS deploy, set in `.env`:
 
