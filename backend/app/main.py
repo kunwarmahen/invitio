@@ -92,6 +92,29 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass  # column already exists
 
+    # The invite_id FKs on rsvps/invite_views were originally created without an
+    # ON DELETE rule, so deleting an event (which cascade-deletes both invites and
+    # rsvps) could hit a FK violation if invites were deleted first. Recreate the
+    # constraints with ON DELETE SET NULL so the DB resolves the ordering itself.
+    # Postgres-only: SQLite can't ALTER constraints and create_all() already bakes
+    # the rule into fresh sqlite DBs (where FK enforcement is off by default).
+    if settings.database_provider == "postgres":
+        fk_migrations = [
+            ("rsvps", "rsvps_invite_id_fkey"),
+            ("invite_views", "invite_views_invite_id_fkey"),
+        ]
+        for table, constraint in fk_migrations:
+            try:
+                async with engine.begin() as conn:
+                    await conn.execute(text(f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {constraint}"))
+                    await conn.execute(text(
+                        f"ALTER TABLE {table} ADD CONSTRAINT {constraint} "
+                        f"FOREIGN KEY (invite_id) REFERENCES invites(id) ON DELETE SET NULL"
+                    ))
+                print(f"[MIGRATION] {table}.invite_id -> ON DELETE SET NULL")
+            except Exception as exc:
+                print(f"[MIGRATION] {constraint} skipped: {exc}")
+
     # Backfill the gallery for events created before event_images existed: each
     # event with a cover path but no rows gets one cover image. Idempotent.
     try:

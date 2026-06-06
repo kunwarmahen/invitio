@@ -98,3 +98,65 @@ async def test_invite_and_rsvp_pagination(client, host):
     # Detail embeds the totals.
     detail = (await client.get(f"/api/events/{ev['id']}", headers=headers)).json()
     assert detail["invites_total"] == 7
+
+
+async def test_delete_event_with_invite_linked_rsvp():
+    """Regression: deleting an event cascade-deletes both invites and rsvps, and a
+    guest who RSVP'd via their personal link has rsvp.invite_id pointing at an
+    invite. The cascade must not hit a FK violation regardless of which table the
+    ORM deletes first. The shared SQLite test DB doesn't enforce foreign keys, so
+    this uses a dedicated engine with PRAGMA foreign_keys=ON to actually exercise
+    the constraint (mirrors Postgres in prod)."""
+    import tempfile
+    from pathlib import Path
+
+    from sqlalchemy import event as sa_event, select
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlalchemy.orm import selectinload
+
+    from app import event_service
+    from app.database import Base
+    from app.models import Event, Invite, Rsvp
+
+    tmp = tempfile.mkdtemp(prefix="invitio-fk-")
+    fk_engine = create_async_engine(f"sqlite+aiosqlite:///{Path(tmp)/'fk.db'}")
+
+    @sa_event.listens_for(fk_engine.sync_engine, "connect")
+    def _fk_on(dbapi_conn, _):
+        dbapi_conn.execute("PRAGMA foreign_keys=ON")
+
+    async with fk_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    Session = async_sessionmaker(fk_engine, expire_on_commit=False)
+    async with Session() as db:
+        ev = Event(title="Bash", public_token="pub-tok")
+        db.add(ev)
+        await db.flush()
+        inv = Invite(event_id=ev.id, guest_email="g@example.com", token="inv-tok")
+        db.add(inv)
+        await db.flush()
+        db.add(Rsvp(event_id=ev.id, invite_id=inv.id, guest_name="G", status="yes"))
+        await db.commit()
+        event_id = ev.id
+
+    async with Session() as db:
+        ev = (
+            await db.execute(
+                select(Event)
+                .where(Event.id == event_id)
+                .options(
+                    selectinload(Event.invites),
+                    selectinload(Event.rsvps).selectinload(Rsvp.answers),
+                    selectinload(Event.images),
+                )
+            )
+        ).scalar_one()
+        await event_service.delete_event(ev, db)
+
+    async with Session() as db:
+        assert (await db.execute(select(Event))).scalars().all() == []
+        assert (await db.execute(select(Invite))).scalars().all() == []
+        assert (await db.execute(select(Rsvp))).scalars().all() == []
+
+    await fk_engine.dispose()

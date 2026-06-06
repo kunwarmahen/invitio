@@ -159,7 +159,9 @@ class InviteView(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), index=True, nullable=False)
-    invite_id: Mapped[int | None] = mapped_column(ForeignKey("invites.id"), index=True, nullable=True)
+    invite_id: Mapped[int | None] = mapped_column(
+        ForeignKey("invites.id", ondelete="SET NULL"), index=True, nullable=True
+    )
     ip: Mapped[str] = mapped_column(String, default="")
     user_agent: Mapped[str] = mapped_column(String, default="")
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=_utcnow)
@@ -193,7 +195,9 @@ class Rsvp(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), index=True, nullable=False)
-    invite_id: Mapped[int | None] = mapped_column(ForeignKey("invites.id"), nullable=True)
+    invite_id: Mapped[int | None] = mapped_column(
+        ForeignKey("invites.id", ondelete="SET NULL"), nullable=True
+    )
 
     guest_name: Mapped[str] = mapped_column(String, nullable=False)
     guest_email: Mapped[str] = mapped_column(String, default="")
