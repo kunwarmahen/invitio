@@ -7,13 +7,23 @@ import os
 import uuid
 
 from fastapi import HTTPException, UploadFile
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import new_token
 from app.config import settings
-from app.email_service import email_configured, send_invite_email
-from app.models import Event, Invite
-from app.schemas import AddInvitesRequest, EventSummary, EventUpdate, InviteOut
+from app.email_service import email_configured, send_broadcast_email, send_invite_email
+from app.models import Event, EventQuestion, Invite, Rsvp, RsvpAnswer
+from app.schemas import (
+    AddInvitesRequest,
+    AnswerIn,
+    BroadcastRequest,
+    BroadcastResult,
+    EventSummary,
+    EventUpdate,
+    InviteOut,
+    QuestionIn,
+)
 
 _ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 _EXT = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif"}
@@ -120,3 +130,127 @@ def summarize(event: Event) -> EventSummary:
             s.maybe += 1
     s.responded = s.yes + s.no + s.maybe
     return s
+
+
+# ── Custom RSVP questions ────────────────────────────────────────────────────
+def _clean_options(item: QuestionIn) -> list[str]:
+    if item.qtype == "text":
+        return []
+    return [o.strip() for o in item.options if o and o.strip()]
+
+
+async def replace_questions(event: Event, items: list[QuestionIn], db: AsyncSession) -> list[EventQuestion]:
+    """Apply the host's full question list by id-diff: update existing questions,
+    insert new ones, and delete any whose id was dropped. Updating in place (rather
+    than wipe-and-recreate) preserves answers already collected for kept questions.
+    `position` follows the submitted order."""
+    existing = {q.id: q for q in event.questions}
+    seen: set[int] = set()
+    for pos, item in enumerate(items):
+        options = _clean_options(item)
+        if item.id and item.id in existing:
+            q = existing[item.id]
+            q.prompt, q.qtype, q.options, q.required, q.position = (
+                item.prompt.strip(), item.qtype, options, item.required, pos,
+            )
+            seen.add(item.id)
+        else:
+            db.add(EventQuestion(
+                event_id=event.id, prompt=item.prompt.strip(), qtype=item.qtype,
+                options=options, required=item.required, position=pos,
+            ))
+    removed = [qid for qid in existing if qid not in seen]
+    if removed:
+        # Drop answers first: the question.answers relationship isn't loaded here,
+        # so the ORM delete-orphan cascade wouldn't fire under async.
+        await db.execute(delete(RsvpAnswer).where(RsvpAnswer.question_id.in_(removed)))
+        for qid in removed:
+            await db.delete(existing[qid])
+    await db.commit()
+    return (
+        await db.execute(
+            select(EventQuestion)
+            .where(EventQuestion.event_id == event.id)
+            .order_by(EventQuestion.position)
+        )
+    ).scalars().all()
+
+
+async def save_answers(
+    rsvp: Rsvp, answers: list[AnswerIn], questions: list[EventQuestion], db: AsyncSession
+) -> None:
+    """Replace a guest's answers. Answers for questions not on the event are
+    ignored; multi values are normalised to a list, others to a string."""
+    qtype_by_id = {q.id: q.qtype for q in questions}
+    await db.execute(delete(RsvpAnswer).where(RsvpAnswer.rsvp_id == rsvp.id))
+    for ans in answers:
+        qtype = qtype_by_id.get(ans.question_id)
+        if qtype is None:
+            continue
+        if qtype == "multi":
+            value = ans.value if isinstance(ans.value, list) else [ans.value]
+            value = [str(v).strip() for v in value if str(v).strip()]
+        else:
+            value = ans.value[0] if isinstance(ans.value, list) else ans.value
+            value = str(value or "").strip()
+        db.add(RsvpAnswer(rsvp_id=rsvp.id, question_id=ans.question_id, value=value))
+    await db.commit()
+
+
+# ── Broadcast ("message all guests") ─────────────────────────────────────────
+def collect_broadcast_recipients(event: Event, audience: str) -> list[tuple[str, str]]:
+    """Deduped (email, name) list for the chosen audience. Mirrors the responder
+    bookkeeping used by the reminder loop for the 'pending' (non-responder) case."""
+    recipients: dict[str, str] = {}
+
+    def add(email: str, name: str) -> None:
+        if not email:
+            return
+        key = email.lower()
+        if key not in recipients or (not recipients[key] and name):
+            recipients[key] = name or ""
+
+    if audience in ("yes", "maybe", "no"):
+        for r in event.rsvps:
+            if r.status == audience:
+                add(r.guest_email, r.guest_name)
+    elif audience == "pending":
+        responded_invite_ids = {r.invite_id for r in event.rsvps if r.invite_id}
+        responded_emails = {r.guest_email.lower() for r in event.rsvps if r.guest_email}
+        for inv in event.invites:
+            if inv.guest_email and inv.id not in responded_invite_ids \
+                    and inv.guest_email.lower() not in responded_emails:
+                add(inv.guest_email, inv.guest_name)
+    else:  # all
+        for inv in event.invites:
+            add(inv.guest_email, inv.guest_name)
+        for r in event.rsvps:
+            add(r.guest_email, r.guest_name)
+
+    return list(recipients.items())
+
+
+async def send_broadcast(event: Event, body: BroadcastRequest) -> BroadcastResult:
+    """Email the host's message to the chosen audience, best-effort per recipient."""
+    recipients = collect_broadcast_recipients(event, body.audience)
+    if not email_configured():
+        return BroadcastResult(sent=0, recipients=len(recipients), email_enabled=False)
+
+    event_url = f"{settings.public_base_url}/e/{event.public_token}"
+    sent = 0
+    for email, name in recipients:
+        try:
+            if await send_broadcast_email(
+                to_email=email,
+                guest_name=name,
+                event_title=event.title,
+                host_name=event.host_display_name,
+                subject=body.subject,
+                message=body.message,
+                event_url=event_url,
+            ):
+                sent += 1
+        except Exception as exc:
+            if settings.debug:
+                print(f"[BROADCAST] to {email} failed: {exc}")
+    return BroadcastResult(sent=sent, recipients=len(recipients), email_enabled=True)

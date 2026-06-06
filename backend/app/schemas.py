@@ -1,5 +1,5 @@
 import datetime
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 
 from pydantic import AfterValidator, BaseModel, EmailStr, Field, PlainSerializer
 
@@ -105,6 +105,45 @@ class InviteOut(BaseModel):
         from_attributes = True
 
 
+# ── Custom RSVP questions ───────────────────────────────────────────────────
+class QuestionIn(BaseModel):
+    # id present => update existing question; absent => create new. Omitting a
+    # previously-saved id deletes that question (and its answers).
+    id: int | None = None
+    prompt: str = Field(min_length=1, max_length=300)
+    qtype: Literal["text", "choice", "multi"] = "text"
+    options: list[str] = []
+    required: bool = False
+
+
+class QuestionsUpdate(BaseModel):
+    questions: list[QuestionIn] = []
+
+
+class QuestionOut(BaseModel):
+    id: int
+    prompt: str
+    qtype: str
+    options: list[str]
+    required: bool
+
+    class Config:
+        from_attributes = True
+
+
+class AnswerIn(BaseModel):
+    question_id: int
+    value: str | list[str] = ""
+
+
+class AnswerOut(BaseModel):
+    question_id: int
+    value: str | list[str]
+
+    class Config:
+        from_attributes = True
+
+
 class RsvpOut(BaseModel):
     id: int
     guest_name: str
@@ -112,6 +151,7 @@ class RsvpOut(BaseModel):
     status: str
     party_size: int
     message: str
+    answers: list[AnswerOut] = []
     created_at: datetime.datetime
     updated_at: datetime.datetime
 
@@ -150,6 +190,20 @@ class QuickCreateResult(BaseModel):
 class EventDetail(EventOut):
     invites: list[InviteOut] = []
     rsvps: list[RsvpOut] = []
+    questions: list[QuestionOut] = []
+
+
+# ── Broadcast ("message all guests") ─────────────────────────────────────────
+class BroadcastRequest(BaseModel):
+    subject: str = Field(min_length=1, max_length=200)
+    message: str = Field(min_length=1)
+    audience: Literal["all", "yes", "maybe", "no", "pending"] = "all"
+
+
+class BroadcastResult(BaseModel):
+    sent: int
+    recipients: int
+    email_enabled: bool
 
 
 class EventSummary(BaseModel):
@@ -194,6 +248,7 @@ class PublicEventOut(BaseModel):
     theme: str
     allow_plus_ones: bool
     public_token: str
+    questions: list[QuestionOut] = []
     # Prefilled from the personal invite link, when present.
     guest_name: str = ""
     guest_email: str = ""
@@ -207,6 +262,7 @@ class RsvpSubmit(BaseModel):
     status: str = Field(pattern="^(yes|no|maybe)$")
     party_size: int = Field(default=1, ge=1, le=50)
     message: str = ""
+    answers: list[AnswerIn] = []
 
 
 TokenResponse.model_rebuild()

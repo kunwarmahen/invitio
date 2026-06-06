@@ -7,16 +7,20 @@ from app import event_service
 from app.auth import get_current_user, new_token
 from app.database import get_db
 from app.email_service import email_configured
-from app.models import Event, User
+from app.models import Event, Rsvp, User
 from app.schemas import (
     AddInvitesRequest,
     AddInvitesResult,
+    BroadcastRequest,
+    BroadcastResult,
     EventCreate,
     EventDetail,
     EventOut,
     EventSummary,
     EventUpdate,
     InviteOut,
+    QuestionOut,
+    QuestionsUpdate,
 )
 
 router = APIRouter(prefix="/api/events", tags=["events"])
@@ -27,7 +31,11 @@ async def _load_event(event_id: int, user: User, db: AsyncSession) -> Event:
         await db.execute(
             select(Event)
             .where(Event.id == event_id)
-            .options(selectinload(Event.invites), selectinload(Event.rsvps))
+            .options(
+                selectinload(Event.invites),
+                selectinload(Event.rsvps).selectinload(Rsvp.answers),
+                selectinload(Event.questions),
+            )
         )
     ).scalar_one_or_none()
     if not event or event.host_id != user.id:
@@ -108,3 +116,15 @@ async def add_invites(event_id: int, body: AddInvitesRequest, user: User = Depen
 @router.get("/{event_id}/summary", response_model=EventSummary)
 async def event_summary(event_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     return event_service.summarize(await _load_event(event_id, user, db))
+
+
+@router.put("/{event_id}/questions", response_model=list[QuestionOut])
+async def set_questions(event_id: int, body: QuestionsUpdate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    event = await _load_event(event_id, user, db)
+    questions = await event_service.replace_questions(event, body.questions, db)
+    return [QuestionOut.model_validate(q) for q in questions]
+
+
+@router.post("/{event_id}/broadcast", response_model=BroadcastResult)
+async def broadcast(event_id: int, body: BroadcastRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    return await event_service.send_broadcast(await _load_event(event_id, user, db), body)

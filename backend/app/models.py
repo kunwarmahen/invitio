@@ -1,6 +1,7 @@
 import datetime
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     DateTime,
     ForeignKey,
@@ -69,6 +70,11 @@ class Event(Base):
     host: Mapped["User"] = relationship(back_populates="events")
     invites: Mapped[list["Invite"]] = relationship(back_populates="event", cascade="all, delete-orphan")
     rsvps: Mapped[list["Rsvp"]] = relationship(back_populates="event", cascade="all, delete-orphan")
+    questions: Mapped[list["EventQuestion"]] = relationship(
+        back_populates="event",
+        cascade="all, delete-orphan",
+        order_by="EventQuestion.position",
+    )
 
 
 class Invite(Base):
@@ -103,3 +109,40 @@ class Rsvp(Base):
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     event: Mapped["Event"] = relationship(back_populates="rsvps")
+    answers: Mapped[list["RsvpAnswer"]] = relationship(
+        back_populates="rsvp", cascade="all, delete-orphan"
+    )
+
+
+class EventQuestion(Base):
+    """A host-defined RSVP question. `qtype` is "text" (free input), "choice"
+    (pick one option) or "multi" (pick several); `options` holds the choices for
+    the latter two and is empty for "text"."""
+    __tablename__ = "event_questions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), index=True, nullable=False)
+    prompt: Mapped[str] = mapped_column(String, nullable=False)
+    qtype: Mapped[str] = mapped_column(String, default="text")  # text | choice | multi
+    options: Mapped[list[str]] = mapped_column(JSON, default=list)
+    required: Mapped[bool] = mapped_column(Boolean, default=False)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+
+    event: Mapped["Event"] = relationship(back_populates="questions")
+    answers: Mapped[list["RsvpAnswer"]] = relationship(
+        back_populates="question", cascade="all, delete-orphan"
+    )
+
+
+class RsvpAnswer(Base):
+    """One guest's answer to one EventQuestion. `value` is a string for
+    text/choice questions and a list[str] for multi-select."""
+    __tablename__ = "rsvp_answers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    rsvp_id: Mapped[int] = mapped_column(ForeignKey("rsvps.id"), index=True, nullable=False)
+    question_id: Mapped[int] = mapped_column(ForeignKey("event_questions.id"), index=True, nullable=False)
+    value: Mapped[object] = mapped_column(JSON, default="")
+
+    rsvp: Mapped["Rsvp"] = relationship(back_populates="answers")
+    question: Mapped["EventQuestion"] = relationship(back_populates="answers")

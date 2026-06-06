@@ -15,15 +15,19 @@ from app.auth import new_token
 from app.config import settings
 from app.database import get_db
 from app.email_service import email_configured, send_manage_link_email
-from app.models import Event
+from app.models import Event, Rsvp
 from app.schemas import (
     AddInvitesRequest,
     AddInvitesResult,
+    BroadcastRequest,
+    BroadcastResult,
     EventDetail,
     EventOut,
     EventSummary,
     EventUpdate,
     InviteOut,
+    QuestionOut,
+    QuestionsUpdate,
     QuickCreate,
     QuickCreateResult,
 )
@@ -36,7 +40,11 @@ async def _load_managed(token: str, db: AsyncSession) -> Event:
         await db.execute(
             select(Event)
             .where(Event.manage_token == token)
-            .options(selectinload(Event.invites), selectinload(Event.rsvps))
+            .options(
+                selectinload(Event.invites),
+                selectinload(Event.rsvps).selectinload(Rsvp.answers),
+                selectinload(Event.questions),
+            )
         )
     ).scalar_one_or_none()
     if not event:
@@ -127,3 +135,15 @@ async def manage_invites(token: str, body: AddInvitesRequest, db: AsyncSession =
 @router.get("/manage/{token}/summary", response_model=EventSummary)
 async def manage_summary(token: str, db: AsyncSession = Depends(get_db)):
     return event_service.summarize(await _load_managed(token, db))
+
+
+@router.put("/manage/{token}/questions", response_model=list[QuestionOut])
+async def manage_questions(token: str, body: QuestionsUpdate, db: AsyncSession = Depends(get_db)):
+    event = await _load_managed(token, db)
+    questions = await event_service.replace_questions(event, body.questions, db)
+    return [QuestionOut.model_validate(q) for q in questions]
+
+
+@router.post("/manage/{token}/broadcast", response_model=BroadcastResult)
+async def manage_broadcast(token: str, body: BroadcastRequest, db: AsyncSession = Depends(get_db)):
+    return await event_service.send_broadcast(await _load_managed(token, db), body)

@@ -226,6 +226,46 @@ async def send_guest_reminder(
     return True
 
 
+async def send_broadcast_email(
+    to_email: str,
+    guest_name: str,
+    event_title: str,
+    host_name: str,
+    subject: str,
+    message: str,
+    event_url: str,
+) -> bool:
+    """A host's message to a guest (update / reminder / cancellation). Returns
+    False (no-op) when Gmail isn't configured."""
+    if not email_configured():
+        return False
+
+    greeting = f"Hi {escape(guest_name)}," if guest_name else "Hi there,"
+    safe_host = escape(host_name or "Your host")
+    safe_title = escape(event_title)
+    body_html = escape(message).replace("\n", "<br>")
+
+    html = (
+        f"<div style='font-family:system-ui,-apple-system,sans-serif;max-width:520px;"
+        f"margin:auto;border:1px solid #eee;border-radius:14px;padding:24px'>"
+        f"<p style='color:#888;font-size:13px;margin:0 0 4px'>{safe_host} · a message about</p>"
+        f"<h1 style='margin:0 0 16px;font-size:22px;color:#1a1a2e'>{safe_title}</h1>"
+        f"<p style='margin:0 0 16px;color:#444'>{greeting}</p>"
+        f"<div style='color:#222;line-height:1.6'>{body_html}</div>"
+        f"<p style='margin:22px 0 0'><a href='{escape(event_url)}' style='display:inline-block;"
+        f"padding:11px 22px;background:#7c3aed;color:#fff;border-radius:10px;"
+        f"text-decoration:none;font-weight:600'>View the invite</a></p>"
+        f"</div>"
+    )
+    text = (
+        f"{greeting}\n\n{message}\n\n"
+        f"View the invite: {event_url}\n"
+        f"— {host_name or 'Your host'} ({event_title})\n"
+    )
+    await asyncio.to_thread(_send_via_gmail, to_email, subject, html, text)
+    return True
+
+
 async def send_manage_link_email(to_email: str, event_title: str, manage_url: str, share_url: str) -> bool:
     """Email the host of a no-account event their private management link plus the
     public share link. Returns False (no-op) when Gmail isn't configured."""

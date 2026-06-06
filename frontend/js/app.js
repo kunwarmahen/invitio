@@ -268,7 +268,7 @@
       : `<div class="img"><div class="ph">🖼️</div><div class="upload-btn" id="img-btn">📷 Upload image</div></div>`;
 
     const rsvps = [...e.rsvps].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-    const rsvpRows = rsvps.length ? rsvps.map(rsvpRowHTML).join("") :
+    const rsvpRows = rsvps.length ? rsvps.map((r) => rsvpRowHTML(r, e.questions)).join("") :
       `<p class="g-sub" style="padding:8px 0">No responses yet.</p>`;
 
     const inviteRows = e.invites.length ? e.invites.map((i) => `
@@ -292,6 +292,7 @@
           <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
             <button class="btn btn-ghost btn-sm" id="edit-btn">✎ Edit</button>
             <a class="btn btn-line btn-sm" href="/e/${esc(e.public_token)}" target="_blank">👁 Preview invite</a>
+            <button class="btn btn-line btn-sm" id="broadcast-btn">✉️ Message guests</button>
             <button class="btn btn-danger btn-sm" id="del-btn">🗑 Delete</button>
           </div>
         </div>
@@ -337,6 +338,11 @@
               ${inviteRows}
             </div>
           </div>
+          <div class="panel">
+            <h4>RSVP questions (${e.questions.length})</h4>
+            ${questionsListHTML(e.questions)}
+            <button class="btn btn-line btn-sm" id="edit-questions-btn" style="margin-top:10px">✎ Edit questions</button>
+          </div>
         </div>
       </div>`;
 
@@ -345,17 +351,43 @@
     $("#del-btn").onclick = () => confirmDelete(e);
     $("#img-btn").onclick = () => triggerUpload(e.id);
     $("#add-invites-btn").onclick = () => addInvites(e.id);
+    $("#broadcast-btn").onclick = () => openBroadcastModal(e);
+    $("#edit-questions-btn").onclick = () => openQuestionsModal(e);
     document.querySelectorAll("[data-copy]").forEach((b) =>
       b.addEventListener("click", () => copy(b.dataset.copy)));
   }
 
-  function rsvpRowHTML(r) {
+  function questionsListHTML(questions) {
+    if (!questions || !questions.length)
+      return `<p class="g-sub" style="padding:8px 0">No custom questions yet.</p>`;
+    const kind = { text: "Text", choice: "Single choice", multi: "Multi-select" };
+    return questions.map((q) => `<div class="guest-row">
+      <div>
+        <div class="g-name">${esc(q.prompt)}${q.required ? ' <span style="color:#e11d48">*</span>' : ""}</div>
+        <div class="g-sub">${kind[q.qtype] || q.qtype}${q.options && q.options.length ? " · " + esc(q.options.join(", ")) : ""}</div>
+      </div>
+    </div>`).join("");
+  }
+
+  function answersHTML(answers, questions) {
+    if (!answers || !answers.length || !questions || !questions.length) return "";
+    const prompts = {};
+    questions.forEach((q) => { prompts[q.id] = q.prompt; });
+    return answers.map((a) => {
+      const v = Array.isArray(a.value) ? a.value.join(", ") : a.value;
+      if (!v) return "";
+      return `<div class="g-sub" style="margin-top:2px">↳ ${esc(prompts[a.question_id] || "Question")}: <b>${esc(v)}</b></div>`;
+    }).filter(Boolean).join("");
+  }
+
+  function rsvpRowHTML(r, questions) {
     const pill = `<span class="pill ${r.status}">${r.status === "yes" ? "Going" : r.status === "no" ? "Can't go" : "Maybe"}</span>`;
     const extra = r.status === "yes" && r.party_size > 1 ? ` · party of ${r.party_size}` : "";
     return `<div class="guest-row">
       <div>
         <div class="g-name">${esc(r.guest_name)} ${pill}</div>
         <div class="g-sub">${esc(r.guest_email || "no email")}${extra}${r.message ? ` · "${esc(r.message)}"` : ""}</div>
+        ${answersHTML(r.answers, questions)}
       </div>
     </div>`;
   }
@@ -363,6 +395,99 @@
   async function copy(text) {
     try { await navigator.clipboard.writeText(text); toast("Copied to clipboard"); }
     catch { toast("Copy failed — select manually", true); }
+  }
+
+  // ── custom questions editor ──
+  function openQuestionsModal(e) {
+    const typeSel = (sel) => `<select class="q-type">
+      <option value="text"${sel === "text" ? " selected" : ""}>Text</option>
+      <option value="choice"${sel === "choice" ? " selected" : ""}>Single choice</option>
+      <option value="multi"${sel === "multi" ? " selected" : ""}>Multi-select</option></select>`;
+    const rowHTML = (q = { prompt: "", qtype: "text", options: [], required: false, id: null }) => `
+      <div class="q-row" data-id="${q.id ?? ""}" style="border:1px solid var(--border,#e6e6ef);border-radius:10px;padding:12px;margin-bottom:10px">
+        <div class="field" style="margin-bottom:8px"><input class="q-prompt" placeholder="Question (e.g. Chicken or fish?)" value="${esc(q.prompt)}"></div>
+        <div class="row" style="align-items:center;margin-bottom:8px">
+          <div class="field" style="margin-bottom:0">${typeSel(q.qtype)}</div>
+          <label style="display:flex;gap:6px;align-items:center;cursor:pointer;font-size:14px"><input type="checkbox" class="q-req" style="width:auto"${q.required ? " checked" : ""}> Required</label>
+        </div>
+        <div class="field q-opts-wrap" style="margin-bottom:8px;display:${q.qtype === "text" ? "none" : "block"}">
+          <input class="q-options" placeholder="Options, comma-separated" value="${esc((q.options || []).join(", "))}"></div>
+        <button type="button" class="btn btn-line btn-sm q-remove">Remove</button>
+      </div>`;
+    mountModal(`
+      <h3>RSVP questions</h3>
+      <p class="g-sub" style="margin-bottom:14px">Guests answer these when they RSVP. They appear top to bottom.</p>
+      <div id="q-rows">${(e.questions || []).map(rowHTML).join("")}</div>
+      <button type="button" class="btn btn-line btn-sm" id="q-add">+ Add question</button>
+      <div class="modal-foot">
+        <button class="btn btn-line" data-close>Cancel</button>
+        <button class="btn btn-primary" id="q-save">Save questions</button>
+      </div>`);
+    const wireRow = (row) => {
+      row.querySelector(".q-type").addEventListener("change", (ev) => {
+        row.querySelector(".q-opts-wrap").style.display = ev.target.value === "text" ? "none" : "block";
+      });
+      row.querySelector(".q-remove").addEventListener("click", () => row.remove());
+    };
+    $("#q-rows").querySelectorAll(".q-row").forEach(wireRow);
+    $("#q-add").addEventListener("click", () => {
+      const tmp = document.createElement("div"); tmp.innerHTML = rowHTML();
+      const row = tmp.firstElementChild; $("#q-rows").appendChild(row); wireRow(row);
+    });
+    $("#q-save").addEventListener("click", async () => {
+      const questions = [...$("#q-rows").querySelectorAll(".q-row")].map((row) => {
+        const qtype = row.querySelector(".q-type").value;
+        const id = row.dataset.id ? parseInt(row.dataset.id, 10) : null;
+        return {
+          id, qtype,
+          prompt: row.querySelector(".q-prompt").value.trim(),
+          required: row.querySelector(".q-req").checked,
+          options: qtype === "text" ? []
+            : row.querySelector(".q-options").value.split(",").map((s) => s.trim()).filter(Boolean),
+        };
+      }).filter((q) => q.prompt);
+      const btn = $("#q-save"); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+      try {
+        await api(`/events/${e.id}/questions`, { method: "PUT", body: { questions } });
+        closeModal(); toast("Questions saved"); openEvent(e.id);
+      } catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = "Save questions"; }
+    });
+  }
+
+  // ── broadcast (message all guests) ──
+  function openBroadcastModal(e) {
+    mountModal(`
+      <h3>Message guests</h3>
+      <p class="g-sub" style="margin-bottom:14px">Send an update or cancellation by email.</p>
+      <div class="field"><label>Send to</label>
+        <select id="bc-aud">
+          <option value="all">Everyone with an email</option>
+          <option value="yes">Guests who said yes</option>
+          <option value="maybe">Guests who said maybe</option>
+          <option value="no">Guests who said no</option>
+          <option value="pending">Haven't responded yet</option>
+        </select></div>
+      <div class="field"><label>Subject</label><input id="bc-subj" placeholder="An update about the event"></div>
+      <div class="field"><label>Message</label><textarea id="bc-msg" placeholder="Write your message…" style="min-height:120px"></textarea></div>
+      <div class="modal-foot">
+        <button class="btn btn-line" data-close>Cancel</button>
+        <button class="btn btn-primary" id="bc-send">Send</button>
+      </div>`);
+    $("#bc-send").addEventListener("click", async () => {
+      const subject = $("#bc-subj").value.trim();
+      const message = $("#bc-msg").value.trim();
+      if (!subject || !message) { toast("Add a subject and a message", true); return; }
+      const btn = $("#bc-send"); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+      try {
+        const res = await api(`/events/${e.id}/broadcast`, {
+          method: "POST", body: { subject, message, audience: $("#bc-aud").value },
+        });
+        closeModal();
+        if (!res.email_enabled) toast(`Email isn't configured — ${res.recipients} guest(s) would have been messaged`, true);
+        else if (!res.recipients) toast("No guests match that audience");
+        else toast(`Sent to ${res.sent} of ${res.recipients} guest(s)`);
+      } catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = "Send"; }
+    });
   }
 
   function confirmDelete(e) {

@@ -191,6 +191,47 @@
     });
   }
 
+  // ── Custom host questions ─────────────────────────────────────────────────
+  function questionsHTML(e) {
+    const qs = e.questions || [];
+    if (!qs.length) return "";
+    const ans = {};
+    ((e.existing_rsvp && e.existing_rsvp.answers) || []).forEach((a) => { ans[a.question_id] = a.value; });
+    const rows = qs.map((q) => {
+      const star = q.required ? ' <span style="color:#e11d48">*</span>' : "";
+      const label = `<label>${esc(q.prompt)}${star}</label>`;
+      if (q.qtype === "choice" || q.qtype === "multi") {
+        const multi = q.qtype === "multi";
+        const sel = multi ? (Array.isArray(ans[q.id]) ? ans[q.id] : []) : ans[q.id];
+        const opts = (q.options || []).map((o) => {
+          const on = multi ? sel.includes(o) : sel === o;
+          const attr = multi ? `data-qm="${q.id}"` : `type="radio" name="q-${q.id}" data-qc="${q.id}"`;
+          const type = multi ? `type="checkbox"` : "";
+          return `<label class="q-opt"><input ${type} ${attr} value="${esc(o)}" ${on ? "checked" : ""}> ${esc(o)}</label>`;
+        }).join("");
+        return `<div class="field">${label}<div class="q-opts">${opts}</div></div>`;
+      }
+      return `<div class="field">${label}
+        <input data-q="${q.id}" value="${esc(ans[q.id] || "")}" placeholder="Your answer"></div>`;
+    }).join("");
+    return `<div id="questions-area" style="display:none">${rows}</div>`;
+  }
+
+  function collectAnswers() {
+    return (event.questions || []).map((q) => {
+      if (q.qtype === "choice") {
+        const el = $(`[data-qc="${q.id}"]:checked`);
+        return { question_id: q.id, value: el ? el.value : "" };
+      }
+      if (q.qtype === "multi") {
+        const els = [...document.querySelectorAll(`[data-qm="${q.id}"]:checked`)];
+        return { question_id: q.id, value: els.map((x) => x.value) };
+      }
+      const el = $(`[data-q="${q.id}"]`);
+      return { question_id: q.id, value: el ? el.value.trim() : "" };
+    });
+  }
+
   function render() {
     const e = event;
     const hero = heroHTML(e);
@@ -223,6 +264,7 @@
               <input id="r-email" type="email" value="${esc(existing ? existing.guest_email : e.guest_email)}" placeholder="you@example.com"></div>
             <div class="field" id="party-field" style="display:none"><label>How many in your party? (including you)</label>
               <input id="r-party" type="number" min="1" max="50" value="${existing && existing.party_size ? existing.party_size : 1}"></div>
+            ${questionsHTML(e)}
             <div class="field"><label>Note to the host (optional)</label>
               <textarea id="r-msg" placeholder="Can't wait! / Running late / dietary notes…">${esc(existing ? existing.message : "")}</textarea></div>
             <button class="btn btn-primary" id="rsvp-submit" style="width:100%;font-size:16px;padding:15px">
@@ -238,6 +280,9 @@
       pick.querySelectorAll("button").forEach((x) => x.classList.remove("sel"));
       b.classList.add("sel");
       $("#party-field").style.display = (plusOne && chosenStatus === "yes") ? "block" : "none";
+      // Host questions only matter for attendees — hidden for a "no".
+      const qa = $("#questions-area");
+      if (qa) qa.style.display = (chosenStatus === "no") ? "none" : "block";
     }));
 
     // preselect existing response
@@ -261,6 +306,16 @@
     const party = (chosenStatus === "yes" && event.allow_plus_ones && partyEl)
       ? Math.max(1, parseInt(partyEl.value, 10) || 1) : 1;
 
+    const answers = collectAnswers();
+    if (chosenStatus !== "no") {
+      for (const q of (event.questions || [])) {
+        if (!q.required) continue;
+        const a = answers.find((x) => x.question_id === q.id);
+        const empty = !a || (Array.isArray(a.value) ? a.value.length === 0 : !a.value);
+        if (empty) { toast(`Please answer: ${q.prompt}`, true); return; }
+      }
+    }
+
     const btn = $("#rsvp-submit"); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
     try {
       const res = await fetch(`/api/public/rsvp/${token}`, {
@@ -272,6 +327,7 @@
           status: chosenStatus,
           party_size: party,
           message: $("#r-msg").value,
+          answers,
         }),
       });
       const data = await res.json().catch(() => ({}));
