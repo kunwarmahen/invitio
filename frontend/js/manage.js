@@ -23,10 +23,12 @@
     catch { toast("Copy failed — select manually", true); }
   }
 
-  function fmtDate(iso) {
+  function fmtDate(iso, tz) {
     if (!iso) return "Date TBD";
-    return new Date(iso).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric",
-      year: "numeric", hour: "numeric", minute: "2-digit" });
+    const opts = { weekday: "short", month: "short", day: "numeric",
+      year: "numeric", hour: "numeric", minute: "2-digit" };
+    if (tz) { opts.timeZone = tz; opts.timeZoneName = "short"; }
+    return new Date(iso).toLocaleString(undefined, opts);
   }
   function toLocalInput(iso) {
     if (!iso) return "";
@@ -102,7 +104,7 @@
         <div class="info">
           <h2>${esc(e.title)}</h2>
           <div class="detail-meta">
-            <span>📅 ${esc(fmtDate(e.event_date))}</span>
+            <span>📅 ${esc(fmtDate(e.event_date, e.timezone))}</span>
             ${e.location ? `<span>📍 ${esc(e.location)}</span>` : ""}
             ${e.host_display_name ? `<span>👤 ${esc(e.host_display_name)}</span>` : ""}
           </div>
@@ -206,6 +208,7 @@
           host_display_name: $("#f-host").value.trim(),
           event_date: dateVal ? new Date(dateVal).toISOString() : null,
           event_end: endVal ? new Date(endVal).toISOString() : null,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           location: $("#f-loc").value.trim(),
           description: $("#f-desc").value,
           theme,

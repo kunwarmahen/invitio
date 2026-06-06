@@ -1,6 +1,36 @@
 import datetime
+from typing import Annotated, Optional
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import AfterValidator, BaseModel, EmailStr, Field, PlainSerializer
+
+
+# ── Datetime handling ─────────────────────────────────────────────────────────
+# Event datetimes are stored naive-UTC. On input we normalise any tz-aware value
+# to naive UTC; on output we re-attach UTC and emit an ISO string *with* the `Z`
+# offset, so the browser parses the correct absolute instant (a bare naive string
+# would be read as the viewer's local time). The event's own IANA `timezone`
+# (captured from the host) is what the frontend uses to render the event in its
+# local time for every guest.
+def _to_naive_utc(v: datetime.datetime | None) -> datetime.datetime | None:
+    if v is not None and v.tzinfo is not None:
+        v = v.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+    return v
+
+
+def _utc_iso(v: datetime.datetime | None) -> str | None:
+    if v is None:
+        return None
+    if v.tzinfo is None:
+        v = v.replace(tzinfo=datetime.timezone.utc)
+    return v.isoformat().replace("+00:00", "Z")
+
+
+# Input field: parse the datetime, then coerce any offset to naive UTC for storage.
+EventDateIn = Annotated[Optional[datetime.datetime], AfterValidator(_to_naive_utc)]
+# Output field: serialize naive-UTC back to an ISO string carrying the Z offset.
+EventDateOut = Annotated[
+    Optional[datetime.datetime], PlainSerializer(_utc_iso, return_type=str, when_used="json")
+]
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -34,8 +64,11 @@ class EventCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     description: str = ""
     location: str = ""
-    event_date: datetime.datetime | None = None
-    event_end: datetime.datetime | None = None
+    event_date: EventDateIn = None
+    event_end: EventDateIn = None
+    # IANA timezone of the event (e.g. "America/New_York"), captured from the
+    # host's browser so the event renders in its own local time for all guests.
+    timezone: str | None = Field(default=None, max_length=64)
     host_display_name: str = ""
     theme: str = "violet"
     image_fit: str = Field(default="contain", pattern="^(cover|contain)$")
@@ -46,8 +79,9 @@ class EventUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
     location: str | None = None
-    event_date: datetime.datetime | None = None
-    event_end: datetime.datetime | None = None
+    event_date: EventDateIn = None
+    event_end: EventDateIn = None
+    timezone: str | None = Field(default=None, max_length=64)
     host_display_name: str | None = None
     theme: str | None = None
     image_fit: str | None = Field(default=None, pattern="^(cover|contain)$")
@@ -90,8 +124,9 @@ class EventOut(BaseModel):
     title: str
     description: str
     location: str
-    event_date: datetime.datetime | None
-    event_end: datetime.datetime | None
+    event_date: EventDateOut
+    event_end: EventDateOut
+    timezone: str | None
     host_display_name: str
     image_path: str | None
     image_fit: str
@@ -150,8 +185,9 @@ class PublicEventOut(BaseModel):
     title: str
     description: str
     location: str
-    event_date: datetime.datetime | None
-    event_end: datetime.datetime | None
+    event_date: EventDateOut
+    event_end: EventDateOut
+    timezone: str | None
     host_display_name: str
     image_path: str | None
     image_fit: str

@@ -24,8 +24,12 @@
 
   function fmtDate(iso) {
     if (!iso) return "Date to be announced";
-    return new Date(iso).toLocaleString(undefined, { weekday: "long", month: "long",
-      day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+    const opts = { weekday: "long", month: "long", day: "numeric", year: "numeric",
+      hour: "numeric", minute: "2-digit" };
+    // Render in the event's own timezone so every guest sees the same local time
+    // (e.g. a 6pm New York party shows "6:00 PM EDT" to a guest in London too).
+    if (event.timezone) { opts.timeZone = event.timezone; opts.timeZoneName = "short"; }
+    return new Date(iso).toLocaleString(undefined, opts);
   }
 
   // ── Add to Calendar ─────────────────────────────────────────────────────
@@ -53,6 +57,9 @@
       details: event.description || `Hosted by ${event.host_display_name || ""}`.trim(),
       location: event.location || "",
     });
+    // Dates are absolute (UTC Z); ctz tells Google to display them in the event's
+    // timezone rather than the viewer's.
+    if (event.timezone) q.set("ctz", event.timezone);
     return `https://calendar.google.com/calendar/render?${q.toString()}`;
   }
   function downloadIcs() {

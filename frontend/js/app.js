@@ -41,15 +41,20 @@
     toastTimer = setTimeout(() => el.classList.remove("show"), 3200);
   }
 
-  function fmtDate(iso) {
+  // Render event datetimes in the event's own timezone (falls back to the
+  // viewer's local zone for legacy events without one).
+  function fmtDate(iso, tz) {
     if (!iso) return "Date TBD";
-    const d = new Date(iso);
-    return d.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric",
-      year: "numeric", hour: "numeric", minute: "2-digit" });
+    const opts = { weekday: "short", month: "short", day: "numeric",
+      year: "numeric", hour: "numeric", minute: "2-digit" };
+    if (tz) { opts.timeZone = tz; opts.timeZoneName = "short"; }
+    return new Date(iso).toLocaleString(undefined, opts);
   }
-  function fmtDateShort(iso) {
+  function fmtDateShort(iso, tz) {
     if (!iso) return "Date TBD";
-    return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    const opts = { month: "short", day: "numeric", year: "numeric" };
+    if (tz) opts.timeZone = tz;
+    return new Date(iso).toLocaleDateString(undefined, opts);
   }
   // datetime-local needs "YYYY-MM-DDTHH:mm" in local time
   function toLocalInput(iso) {
@@ -150,7 +155,7 @@
       ${thumb}
       <div class="body">
         <h3>${esc(e.title)}</h3>
-        <div class="meta">📅 ${esc(fmtDateShort(e.event_date))}${e.location ? " · 📍 " + esc(e.location) : ""}</div>
+        <div class="meta">📅 ${esc(fmtDateShort(e.event_date, e.timezone))}${e.location ? " · 📍 " + esc(e.location) : ""}</div>
       </div>
     </div>`;
   }
@@ -216,6 +221,7 @@
         host_display_name: $("#f-host").value.trim(),
         event_date: dateVal ? new Date(dateVal).toISOString() : null,
         event_end: endVal ? new Date(endVal).toISOString() : null,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         location: $("#f-loc").value.trim(),
         description: $("#f-desc").value,
         theme,
@@ -278,7 +284,7 @@
         <div class="info">
           <h2>${esc(e.title)}</h2>
           <div class="detail-meta">
-            <span>📅 ${esc(fmtDate(e.event_date))}</span>
+            <span>📅 ${esc(fmtDate(e.event_date, e.timezone))}</span>
             ${e.location ? `<span>📍 ${esc(e.location)}</span>` : ""}
             ${e.host_display_name ? `<span>👤 ${esc(e.host_display_name)}</span>` : ""}
           </div>

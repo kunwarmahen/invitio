@@ -54,6 +54,7 @@ async def quick_create(body: QuickCreate, db: AsyncSession = Depends(get_db)):
         location=body.location,
         event_date=body.event_date,
         event_end=body.event_end,
+        timezone=body.timezone,
         host_display_name=body.host_display_name.strip(),
         host_email=host_email,
         theme=body.theme,

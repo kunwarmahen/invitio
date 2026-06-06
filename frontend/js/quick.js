@@ -31,6 +31,7 @@
       host_display_name: $("#f-host").value.trim(),
       event_date: dateVal ? new Date(dateVal).toISOString() : null,
       event_end: endVal ? new Date(endVal).toISOString() : null,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       location: $("#f-loc").value.trim(),
       description: $("#f-desc").value,
       theme,

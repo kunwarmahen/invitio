@@ -37,6 +37,8 @@ reverse proxy.
   nudges non-responders before each event (once per event; configurable window).
 - **Add to Calendar** — guests get Google Calendar + `.ics` (Apple/Outlook)
   buttons on the invite and after RSVPing yes.
+- **Timezone-correct times** — each event captures its timezone, so every guest
+  sees the same local time (e.g. "6:00 PM EDT") no matter where they are.
 - **Dashboard** — response counts, head count, full guest + response list.
 
 ## Tech stack

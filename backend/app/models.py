@@ -42,6 +42,10 @@ class Event(Base):
     location: Mapped[str] = mapped_column(String, default="")
     event_date: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
     event_end: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
+    # IANA timezone the event happens in (e.g. "America/New_York"), captured from
+    # the host. event_date/event_end are stored naive-UTC; this is how the front
+    # end renders them in the event's local time for every guest. Null = legacy.
+    timezone: Mapped[str | None] = mapped_column(String, nullable=True)
     host_display_name: Mapped[str] = mapped_column(String, default="")
     host_email: Mapped[str | None] = mapped_column(String, nullable=True)
     image_path: Mapped[str | None] = mapped_column(String, nullable=True)
