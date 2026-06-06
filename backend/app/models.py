@@ -114,6 +114,9 @@ class Invite(Base):
     # Per-guest token for the personalized RSVP link (/i/<token>).
     token: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
     sent_at: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
+    # First time the guest opened their personalized invite link, so the host can
+    # see who has actually looked at the invitation. Stamped once (first view).
+    viewed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=_utcnow)
 
     event: Mapped["Event"] = relationship(back_populates="invites")

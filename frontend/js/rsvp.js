@@ -35,6 +35,44 @@
     clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove("show"), 3200);
   }
 
+  async function copy(text) {
+    try { await navigator.clipboard.writeText(text); toast("Link copied — paste it anywhere"); }
+    catch { toast("Copy failed — select manually", true); }
+  }
+
+  // ── "Invite a friend" forwardable share ───────────────────────────────────
+  // Always shares the public event link (/e/<public_token>), never a personal
+  // invite token — so a forwarded link can't let a friend RSVP as the guest.
+  const NATIVE_SHARE = typeof navigator !== "undefined" && !!navigator.share;
+  function friendUrl() { return `${location.origin}/e/${event.public_token}`; }
+  function inviteFriendHTML(e) {
+    if (!e.public_token) return "";
+    const url = friendUrl();
+    const title = e.title || "this event";
+    const text = `You're invited to ${title}! RSVP here: ${url}`;
+    const t = encodeURIComponent(text);
+    const subj = encodeURIComponent(`You're invited: ${title}`);
+    return `<div class="wall-section invite-friend">
+      <h3 style="font-size:18px;margin:0 0 6px">Know someone who'd love this?</h3>
+      <p class="g-sub" style="margin:0 0 12px">Forward the invite — they can RSVP too.</p>
+      <div class="share-actions">
+        <a class="btn btn-line btn-sm" href="https://wa.me/?text=${t}" target="_blank" rel="noopener">💬 WhatsApp</a>
+        <a class="btn btn-line btn-sm" href="sms:?&body=${t}">📱 SMS</a>
+        <a class="btn btn-line btn-sm" href="mailto:?subject=${subj}&body=${t}">✉️ Email</a>
+        ${NATIVE_SHARE
+          ? `<button class="btn btn-line btn-sm" id="friend-share">📤 Share…</button>`
+          : `<button class="btn btn-line btn-sm" id="friend-copy">🔗 Copy link</button>`}
+      </div>
+    </div>`;
+  }
+  function wireInviteFriend() {
+    const s = $("#friend-share");
+    if (s) s.addEventListener("click", () =>
+      navigator.share({ title: event.title, text: `You're invited to ${event.title}!`, url: friendUrl() }).catch(() => {}));
+    const c = $("#friend-copy");
+    if (c) c.addEventListener("click", () => copy(friendUrl()));
+  }
+
   function fmtDate(iso) {
     if (!iso) return "Date to be announced";
     const opts = { weekday: "long", month: "long", day: "numeric", year: "numeric",
@@ -389,6 +427,7 @@
           </div>
           ${galleryStripHTML(e)}
           ${comingHTML(e)}
+          ${inviteFriendHTML(e)}
           ${wallHTML(e)}
         </div>
       </div>`;
@@ -414,6 +453,7 @@
     $("#rsvp-submit").addEventListener("click", submit);
     const wallBtn = $("#wall-post");
     if (wallBtn) wallBtn.addEventListener("click", submitWallPost);
+    wireInviteFriend();
     wireCalendar();
     const heroEl = $("#hero");
     if (heroEl && event.image_path) heroEl.addEventListener("click", () => openLightbox(0));

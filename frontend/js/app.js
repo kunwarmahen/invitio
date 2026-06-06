@@ -314,6 +314,24 @@
   function shareUrl(token) { return `${location.origin}/e/${token}`; }
   const mapsLink = (loc) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc)}`;
 
+  // ── share buttons (WhatsApp / SMS / email / native share) ──────────────────
+  // Quick ways to send the public RSVP link via the apps people actually use.
+  const NATIVE_SHARE = typeof navigator !== "undefined" && !!navigator.share;
+  function shareActionsHTML(url, title) {
+    const text = `You're invited to ${title}! RSVP here: ${url}`;
+    const t = encodeURIComponent(text);
+    const subj = encodeURIComponent(`You're invited: ${title}`);
+    return `<div class="share-actions">
+      <a class="btn btn-line btn-sm" href="https://wa.me/?text=${t}" target="_blank" rel="noopener">💬 WhatsApp</a>
+      <a class="btn btn-line btn-sm" href="sms:?&body=${t}">📱 SMS</a>
+      <a class="btn btn-line btn-sm" href="mailto:?subject=${subj}&body=${t}">✉️ Email</a>
+      ${NATIVE_SHARE ? `<button class="btn btn-line btn-sm" data-share-native data-url="${esc(url)}" data-title="${esc(title)}">📤 Share…</button>` : ""}
+    </div>`;
+  }
+  function nativeShare(url, title) {
+    navigator.share({ title, text: `You're invited to ${title}!`, url }).catch(() => {});
+  }
+
   function renderDetail(e, s) {
     const focalPos = `${e.image_focal_x ?? 50}% ${e.image_focal_y ?? 50}%`;
     const img = e.image_path
@@ -327,7 +345,7 @@
     const inviteRows = e.invites.length ? e.invites.map((i) => `
       <div class="guest-row">
         <div><div class="g-name">${esc(i.guest_name || i.guest_email)}</div>
-          <div class="g-sub">${esc(i.guest_email)}${i.sent_at ? " · ✉️ invited" : " · not emailed"}</div></div>
+          <div class="g-sub">${esc(i.guest_email)}${i.sent_at ? " · ✉️ invited" : " · not emailed"}${i.viewed_at ? " · 👁 opened" : ""}</div></div>
         <button class="btn btn-line btn-sm" data-copy="${esc(location.origin)}/i/${esc(i.token)}">Copy link</button>
       </div>`).join("") : `<p class="g-sub" style="padding:8px 0">No guests added yet.</p>`;
 
@@ -389,6 +407,7 @@
               <input id="share-input" readonly value="${esc(shareUrl(e.public_token))}">
               <button class="btn btn-primary btn-sm" data-copy="${esc(shareUrl(e.public_token))}">Copy</button>
             </div>
+            ${shareActionsHTML(shareUrl(e.public_token), e.title)}
           </div>
           <div class="panel">
             <h4>Invite by email</h4>
@@ -438,6 +457,8 @@
       b.addEventListener("click", () => removeCohost(e.id, b.dataset.delCohost)));
     document.querySelectorAll("[data-copy]").forEach((b) =>
       b.addEventListener("click", () => copy(b.dataset.copy)));
+    document.querySelectorAll("[data-share-native]").forEach((b) =>
+      b.addEventListener("click", () => nativeShare(b.dataset.url, b.dataset.title)));
   }
 
   function wallModerationHTML(posts) {

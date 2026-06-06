@@ -73,6 +73,18 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass  # column already exists
 
+    # Same idempotent pattern for invite columns added after the table existed.
+    invite_column_migrations = [
+        ("viewed_at", "TIMESTAMP"),
+    ]
+    for col, decl in invite_column_migrations:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(f"ALTER TABLE invites ADD COLUMN {col} {decl}"))
+            print(f"[MIGRATION] Added invites.{col}")
+        except Exception:
+            pass  # column already exists
+
     # Backfill the gallery for events created before event_images existed: each
     # event with a cover path but no rows gets one cover image. Idempotent.
     try:

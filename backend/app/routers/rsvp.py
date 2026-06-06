@@ -4,6 +4,8 @@ A token in the URL is either an Event.public_token (the shareable link) or an
 Invite.token (a personalized link emailed to one guest). Both resolve to an
 event; an invite token additionally prefills/links the guest's response.
 """
+import datetime
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -109,6 +111,10 @@ async def public_invite(token: str, db: AsyncSession = Depends(get_db)):
     event, invite = await _resolve_token(token, db)
     existing = None
     if invite:
+        # Stamp the first open so the host can see who has looked at their invite.
+        if invite.viewed_at is None:
+            invite.viewed_at = datetime.datetime.now(datetime.timezone.utc)
+            await db.commit()
         existing = (
             await db.execute(
                 select(Rsvp).where(Rsvp.invite_id == invite.id).options(selectinload(Rsvp.answers))

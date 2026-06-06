@@ -33,10 +33,17 @@ reverse proxy.
 - **Tap to zoom** — guests can open the invite image full-screen.
 - **Invite by email** — each guest gets a unique tokenized RSVP link (emailed
   via Gmail when configured).
-- **Share a link** — one public link anyone can open and RSVP through.
+- **Share a link** — one public link anyone can open and RSVP through, with
+  one-tap **WhatsApp / SMS / email share buttons** (plus the native share sheet
+  on mobile) on the host + manage dashboards.
 - **Social link previews** — RSVP links carry per-event Open Graph / Twitter
   Card tags (title, description, invite image), so pasting one into
   iMessage/WhatsApp/Facebook/Slack unfurls with the actual invite.
+- **"Viewed" tracking** — each personalized invite link records the first time
+  the guest opens it, so the host's guest list shows who's actually looked.
+- **Invite a friend** — a forwardable share row on the RSVP page that passes the
+  *public* event link (never the guest's personal token), so anyone can pass the
+  invite along without being able to RSVP as someone else.
 - **RSVP without login** — yes / maybe / no, party size (+1s), and a note.
   Re-submitting updates the existing response instead of duplicating it. A
   "yes" gets a celebratory confetti burst (skipped under reduced-motion).

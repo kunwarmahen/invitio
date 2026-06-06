@@ -108,6 +108,7 @@ class InviteOut(BaseModel):
     guest_name: str
     token: str
     sent_at: datetime.datetime | None
+    viewed_at: datetime.datetime | None = None
 
     class Config:
         from_attributes = True

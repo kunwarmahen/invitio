@@ -242,6 +242,9 @@ textarea { resize: vertical; min-height: 84px; }
 /* share link box */
 .share-box { display: flex; gap: 8px; }
 .share-box input { font-family: "DM Mono", monospace; font-size: 13px; background: var(--bg); }
+/* WhatsApp / SMS / email / native share button row */
+.share-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.share-actions .btn { text-decoration: none; }
 
 /* guest rows */
 .guest-row { display: flex; align-items: center; justify-content: space-between; gap: 12px;
