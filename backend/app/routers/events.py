@@ -103,6 +103,8 @@ async def create_event(body: EventCreate, user: User = Depends(get_current_user)
         theme=body.theme,
         image_fit=body.image_fit,
         allow_plus_ones=body.allow_plus_ones,
+        wall_enabled=body.wall_enabled,
+        guestlist_public=body.guestlist_public,
         public_token=new_token(),
     )
     db.add(event)

@@ -94,6 +94,8 @@ async def quick_create(body: QuickCreate, request: Request, db: AsyncSession = D
         theme=body.theme,
         image_fit=body.image_fit,
         allow_plus_ones=body.allow_plus_ones,
+        wall_enabled=body.wall_enabled,
+        guestlist_public=body.guestlist_public,
         public_token=new_token(),
         manage_token=new_token(24),
     )
