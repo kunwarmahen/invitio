@@ -107,17 +107,68 @@ def _event_lines(ctx: dict) -> str:
     return "\n".join(bits) or "An event"
 
 
+# Tone presets the UI exposes. The key comes in over the wire; the value is the
+# style guidance fed to the model. Unknown keys fall through as free text so a
+# custom tone string still works.
+TONE_PRESETS = {
+    "warm": "warm, heartfelt, and inviting",
+    "funny": (
+        "playful and genuinely funny, with light, affectionate humor and a wink — "
+        "clever, not corny, and never mean-spirited or sarcastic at anyone's expense"
+    ),
+    "heartfelt": "sincere and emotional, celebrating what makes this moment meaningful",
+    "elegant": "elegant and refined, with graceful, polished phrasing",
+    "playful": "upbeat, breezy, and fun, with an easy sense of celebration",
+    "exciting": "high-energy and celebratory, building real anticipation for the day",
+    "somber": (
+        "quiet, dignified, and respectful, fitting a solemn or reflective occasion — "
+        "gentle and sincere, no jokes or hype"
+    ),
+    "casual": "relaxed and conversational, like a close friend texting the group",
+}
+
+
+def _tone_guidance(raw: str) -> str:
+    key = (raw or "").strip().lower()
+    return TONE_PRESETS.get(key) or (raw or "").strip() or TONE_PRESETS["warm"]
+
+
 def description_messages(ctx: dict) -> tuple[str, str]:
-    tone = (ctx.get("tone") or "warm and inviting").strip()
+    tone = _tone_guidance(ctx.get("tone"))
+    details = (ctx.get("details") or "").strip()
     system = (
-        "You write short, vivid event invitation descriptions. Return 2-4 sentences "
-        "of plain text only — no markdown, no title, no sign-off, no placeholders."
+        "You are an expert invitation copywriter. You turn an event's details into a "
+        "short, vivid invitation that makes guests want to come. Follow these rules:\n"
+        "- Write 2-4 sentences of plain text. No markdown, no title, no greeting, no "
+        "sign-off, and no placeholders like [Name] or [date].\n"
+        "- Use ONLY the facts you are given. Never invent names, pronouns, "
+        "relationships, or details. If the guest of honor's name or gender isn't "
+        "clear, write around it (\"our graduate\", \"the guest of honor\") rather than "
+        "guessing — and never assume the host is the person being celebrated.\n"
+        "- Don't just restate the date, time, and location; those are shown to guests "
+        "separately. Add color, warmth, and a reason to show up.\n"
+        "- Match the requested tone exactly."
     )
-    user = (
-        f"Write a {tone} invitation description for guests.\n\n{_event_lines(ctx)}\n\n"
-        "Make guests excited to attend. Do not restate the date/location as a list."
-    )
-    return system, user
+    parts = [
+        "Write an invitation description for guests.",
+        f"Tone of voice: {tone}.",
+        "",
+        _event_lines(ctx),
+    ]
+    if details:
+        parts += [
+            "",
+            "The host's own notes / draft. Build on THIS — keep its specific personal "
+            "details, names, and pronouns exactly; just sharpen and tighten the "
+            "writing to match the tone above. Do not contradict or replace these facts:",
+            details,
+        ]
+    parts += [
+        "",
+        "Give guests a real sense of the occasion and a reason to be there. "
+        "Do not restate the date, time, or location as a list.",
+    ]
+    return system, "\n".join(parts)
 
 
 def broadcast_messages(ctx: dict) -> tuple[str, str]:
@@ -138,7 +189,7 @@ async def text_from_request(body) -> str:
     ctx = {
         "title": body.title, "event_date": body.event_date, "location": body.location,
         "host_display_name": body.host_display_name, "theme": body.theme,
-        "tone": body.tone, "instructions": body.instructions,
+        "tone": body.tone, "details": body.details, "instructions": body.instructions,
     }
     system, user = broadcast_messages(ctx) if body.kind == "broadcast" else description_messages(ctx)
     return await generate_text(system, user)

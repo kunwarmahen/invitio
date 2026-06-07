@@ -340,7 +340,8 @@ class AiTextRequest(BaseModel):
     location: str = ""
     host_display_name: str = ""
     theme: str = ""
-    tone: str = ""           # description only
+    tone: str = ""           # description only — a preset key or free-text style
+    details: str = ""        # description only — host's notes/draft to build on
     audience: str = ""       # broadcast only (informational)
     instructions: str = ""   # broadcast intent
 

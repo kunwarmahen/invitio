@@ -35,4 +35,22 @@
   window.invitioMotif = function (theme) {
     return window.INVITIO_THEME_MOTIF[theme] || "✦";
   };
+
+  // Tone presets for AI description generation. Keys are sent to the backend
+  // (see ai_service.TONE_PRESETS); labels are shown in the picker. Kept here so
+  // the host app and the no-account manage page expose the same list.
+  window.INVITIO_TONES = [
+    ["warm", "Warm"], ["funny", "Funny"], ["heartfelt", "Heartfelt"],
+    ["elegant", "Elegant"], ["playful", "Playful"], ["exciting", "Exciting"],
+    ["somber", "Somber"], ["casual", "Casual"],
+  ];
+  // Markup for the tone-picker + "Generate" row shown under the description box.
+  window.invitioGenRow = function () {
+    const opts = window.INVITIO_TONES
+      .map(([v, label]) => `<option value="${v}">${label}</option>`).join("");
+    return `<div class="row" style="gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap">
+      <select id="gen-tone" class="field" title="Tone of voice" style="margin:0;width:auto;flex:0 0 auto">${opts}</select>
+      <button type="button" class="btn btn-line btn-sm" id="gen-desc" style="flex:0 0 auto">✨ Generate with AI</button>
+    </div>`;
+  };
 })();

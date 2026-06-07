@@ -239,7 +239,7 @@
           <input id="f-loc" value="${esc(data.location)}" placeholder="123 Main St"></div>
         <div class="field"><label>Description</label>
           <textarea id="f-desc" placeholder="Tell your guests what to expect…">${esc(data.description)}</textarea>
-          ${aiStatus.llm ? `<button type="button" class="btn btn-line btn-sm" id="gen-desc" style="margin-top:6px">✨ Generate with AI</button>` : ""}</div>
+          ${aiStatus.llm ? invitioGenRow() : ""}</div>
         <div class="field"><label>Theme</label><div class="theme-pick" id="theme-pick">${swatches}</div></div>
         <div class="field"><label style="display:flex;gap:8px;align-items:center;cursor:pointer">
           <input type="checkbox" id="f-fit" style="width:auto" ${data.image_fit === "contain" ? "checked" : ""}>
@@ -278,6 +278,7 @@
         const res = await api("/ai/text", { method: "POST", body: {
           kind: "description", title, event_date: $("#f-date").value || null,
           location: $("#f-loc").value.trim(), host_display_name: $("#f-host").value.trim(), theme,
+          tone: $("#gen-tone").value, details: $("#f-desc").value.trim(),
         }});
         $("#f-desc").value = res.text;
       } catch (err) { toast(err.message, true); }

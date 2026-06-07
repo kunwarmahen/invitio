@@ -68,7 +68,11 @@ reverse proxy.
   (owner keeps delete + co-host control).
 - **AI generation (optional)** — generate invite copy, broadcast drafts, and a
   hero image from any OpenAI-compatible endpoint. Local-first: Ollama / llama.cpp
-  for text, LocalAI (SDXL/FLUX) for images. Off until configured; see `.env.example`.
+  for text, LocalAI (SDXL/FLUX) for images. Invite copy takes a **tone** (warm,
+  funny, heartfelt, elegant, playful, exciting, somber, casual) and **builds on
+  whatever you've already typed** in the description rather than rewriting from the
+  title — so it polishes your draft and won't invent names or pronouns. Off until
+  configured; see `.env.example`.
 - **Host RSVP notifications** — the host gets an email the moment a guest
   responds (works for both account and quick-create events).
 - **Reminder emails** — a background loop emails a reminder to "yes" guests and
