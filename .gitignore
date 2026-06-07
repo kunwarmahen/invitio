@@ -54,3 +54,4 @@ Thumbs.db
 
 # ─── Deploy artifacts ─────────────────────────────────────────
 *.tar.gz
+cmd.txt
