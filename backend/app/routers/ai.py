@@ -16,8 +16,12 @@ router = APIRouter(prefix="/api/ai", tags=["ai"])
 
 
 @router.get("/status", response_model=AiStatus)
-def ai_status():
-    return AiStatus(llm=ai_service.llm_enabled(), image=ai_service.image_enabled())
+async def ai_status():
+    return AiStatus(
+        llm=ai_service.llm_enabled(),
+        llm_up=await ai_service.llm_healthy(),
+        image=ai_service.image_enabled(),
+    )
 
 
 @router.post("/text", response_model=AiTextResult)

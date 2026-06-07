@@ -6,6 +6,7 @@ providers — only the base URL / key / model differ (see config.py). Both text 
 image generation are off unless explicitly configured, and each is independent.
 """
 import base64
+import time
 
 import httpx
 from fastapi import HTTPException
@@ -19,6 +20,38 @@ def llm_enabled() -> bool:
 
 def image_enabled() -> bool:
     return bool(settings.ai_image_enabled and settings.ai_image_base_url)
+
+
+# Reachability of the LLM server. It usually runs on a *different* machine, so
+# "configured" (llm_enabled) and "actually answering" are not the same thing.
+# We probe the OpenAI-compatible /models endpoint with a short timeout and cache
+# the result briefly so the public status endpoint stays fast and we don't hammer
+# the server on every page load.
+_HEALTH_TTL = 15.0  # seconds to trust a cached probe result
+_llm_health: dict = {"checked_at": 0.0, "up": False}
+
+
+async def llm_healthy() -> bool:
+    if not llm_enabled():
+        return False
+    now = time.monotonic()
+    if now - _llm_health["checked_at"] < _HEALTH_TTL:
+        return _llm_health["up"]
+    up = False
+    try:
+        async with httpx.AsyncClient(timeout=settings.ai_llm_health_timeout) as client:
+            resp = await client.get(
+                _url(settings.ai_llm_base_url, "models"),
+                headers=_headers(settings.ai_llm_api_key),
+            )
+        # Any non-5xx response means the box is up and answering. A 4xx (e.g. the
+        # endpoint or auth differs) still proves reachability; 5xx / 502-503 from a
+        # proxy means the backend model server is down.
+        up = resp.status_code < 500
+    except httpx.HTTPError:
+        up = False
+    _llm_health.update(checked_at=now, up=up)
+    return up
 
 
 def _headers(api_key: str) -> dict[str, str]:

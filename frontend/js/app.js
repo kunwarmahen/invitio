@@ -136,9 +136,11 @@
   //  APP SHELL
   // ════════════════════════════════════════════════════════════════════════
   // AI availability — fetched once; generate buttons only show when configured.
-  let aiStatus = { llm: false, image: false };
+  // `llm_up` reflects whether the (remote) LLM server is actually reachable; when
+  // it's false the buttons render disabled with an "offline" notice.
+  let aiStatus = { llm: false, llm_up: false, image: false };
   async function loadAiStatus() {
-    try { aiStatus = await api("/ai/status"); } catch { aiStatus = { llm: false, image: false }; }
+    try { aiStatus = await api("/ai/status"); } catch { aiStatus = { llm: false, llm_up: false, image: false }; }
   }
 
   function enterApp() {
@@ -239,7 +241,7 @@
           <input id="f-loc" value="${esc(data.location)}" placeholder="123 Main St"></div>
         <div class="field"><label>Description</label>
           <textarea id="f-desc" placeholder="Tell your guests what to expect…">${esc(data.description)}</textarea>
-          ${aiStatus.llm ? invitioGenRow() : ""}</div>
+          ${aiStatus.llm ? invitioGenRow(aiStatus.llm_up) : ""}</div>
         <div class="field"><label>Theme</label><div class="theme-pick" id="theme-pick">${swatches}</div></div>
         <div class="field"><label style="display:flex;gap:8px;align-items:center;cursor:pointer">
           <input type="checkbox" id="f-fit" style="width:auto" ${data.image_fit === "contain" ? "checked" : ""}>
@@ -747,9 +749,7 @@
         </select></div>
       <div class="field"><label>Subject</label><input id="bc-subj" placeholder="An update about the event"></div>
       <div class="field"><label>Message</label><textarea id="bc-msg" placeholder="Write your message…" style="min-height:120px"></textarea>
-        ${aiStatus.llm ? `<div class="row" style="align-items:center;margin-top:6px">
-          <input id="bc-intent" class="field" style="margin:0" placeholder="What's it about? (e.g. venue moved indoors)">
-          <button type="button" class="btn btn-line btn-sm" id="bc-gen" style="flex:0 0 auto">✨ Draft</button></div>` : ""}</div>
+        ${aiStatus.llm ? invitioBroadcastGenRow(aiStatus.llm_up) : ""}</div>
       <div class="modal-foot">
         <button class="btn btn-line" data-close>Cancel</button>
         <button class="btn btn-primary" id="bc-send">Send</button>

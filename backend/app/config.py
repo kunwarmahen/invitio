@@ -79,6 +79,10 @@ class Settings(BaseSettings):
     ai_llm_api_key: str = ""
     ai_llm_model: str = "llama3.1"
     ai_llm_timeout: int = 60
+    # Short timeout for the reachability probe behind /api/ai/status, so the page
+    # doesn't hang when the (remote) LLM machine is down. The generate buttons are
+    # disabled when this probe fails.
+    ai_llm_health_timeout: int = 5
     # Images: /v1/images/generations — e.g. LocalAI serving SDXL/FLUX on a GPU.
     # For an RTX 3090 (24 GB): SDXL 1.0 (default), SDXL-Turbo, or FLUX.1-schnell.
     ai_image_enabled: bool = False

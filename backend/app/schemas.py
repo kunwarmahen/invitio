@@ -359,7 +359,8 @@ class CancelResult(BaseModel):
 
 # ── AI generation ────────────────────────────────────────────────────────────
 class AiStatus(BaseModel):
-    llm: bool
+    llm: bool        # text generation is configured
+    llm_up: bool = True  # the (remote) LLM server is actually reachable right now
     image: bool
 
 

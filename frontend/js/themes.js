@@ -44,13 +44,32 @@
     ["elegant", "Elegant"], ["playful", "Playful"], ["exciting", "Exciting"],
     ["somber", "Somber"], ["casual", "Casual"],
   ];
+  // Shown under a generate button when the LLM server is configured but offline
+  // (it usually runs on a separate machine). The button is disabled in that case.
+  window.INVITIO_LLM_DOWN_MSG =
+    "The AI writing assistant is offline right now — please write this manually.";
+  const llmDownNote = (up) => up ? "" :
+    `<p class="g-sub" style="margin-top:6px;width:100%;color:#dc2626">${window.INVITIO_LLM_DOWN_MSG}</p>`;
+
   // Markup for the tone-picker + "Generate" row shown under the description box.
-  window.invitioGenRow = function () {
+  // Pass up=false when the LLM is unreachable to disable it and show the notice.
+  window.invitioGenRow = function (up = true) {
     const opts = window.INVITIO_TONES
       .map(([v, label]) => `<option value="${v}">${label}</option>`).join("");
+    const dis = up ? "" : "disabled";
     return `<div class="row" style="gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap">
-      <select id="gen-tone" class="field" title="Tone of voice" style="margin:0;width:auto;flex:0 0 auto">${opts}</select>
-      <button type="button" class="btn btn-line btn-sm" id="gen-desc" style="flex:0 0 auto">✨ Generate with AI</button>
+      <select id="gen-tone" class="field" title="Tone of voice" style="margin:0;width:auto;flex:0 0 auto" ${dis}>${opts}</select>
+      <button type="button" class="btn btn-line btn-sm" id="gen-desc" style="flex:0 0 auto" ${dis}>✨ Generate with AI</button>
+      ${llmDownNote(up)}
     </div>`;
+  };
+
+  // Markup for the "intent + Draft" row inside the broadcast/message-guests modal.
+  window.invitioBroadcastGenRow = function (up = true) {
+    const dis = up ? "" : "disabled";
+    return `<div class="row" style="align-items:center;margin-top:6px;flex-wrap:wrap">
+      <input id="bc-intent" class="field" style="margin:0" placeholder="What's it about? (e.g. venue moved indoors)" ${dis}>
+      <button type="button" class="btn btn-line btn-sm" id="bc-gen" style="flex:0 0 auto" ${dis}>✨ Draft</button>
+      ${llmDownNote(up)}</div>`;
   };
 })();
