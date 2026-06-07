@@ -15,7 +15,9 @@ reverse proxy.
 - **Host accounts** — email/password signup, JWT sessions.
 - **No-account "quick create"** — make one event with no signup at `/quick`; you
   get a secret manage link (`/m/<token>`, optionally emailed to you) that
-  administers the event without logging in.
+  administers the event without logging in. Gated by `QUICK_CREATE_ENABLED` — set
+  it to `false` to require an account (the page redirects home, the API returns
+  403, and the link is hidden; existing quick events keep working).
 - **Create events** — title, start/end date/time, location, description, host
   name, theme, and a **custom uploaded hero image**, shown **whole/uncropped by
   default** (over a blurred backdrop); a toggle switches to crop-to-fill.

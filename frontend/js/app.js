@@ -914,6 +914,12 @@
   // ════════════════════════════════════════════════════════════════════════
   async function boot() {
     renderAuthMode();
+    // Reveal the no-account "quick create" link only when the server allows it
+    // (the CTA ships hidden, so a disabled/unreachable server keeps it off).
+    try {
+      const cfg = await api("/config");
+      if (cfg.quick_create) $("#quick-create-cta").classList.remove("hidden");
+    } catch { /* leave the CTA hidden */ }
     if (token()) {
       try { me = await api("/auth/me"); enterApp(); return; }
       catch { /* token invalid → fall through to auth */ }

@@ -24,6 +24,13 @@ class Settings(BaseSettings):
     upload_dir: str = "./uploads"
     max_upload_mb: int = 10
 
+    # No-account "quick create" flow (POST /api/public/events + the /quick page).
+    # When False, the public can't spin up events without signing up — the /quick
+    # page redirects home, the endpoint returns 403, and the "create without an
+    # account" link is hidden. Already-created quick events keep working via their
+    # manage link. Turn off if you want to limit who can create events on your host.
+    quick_create_enabled: bool = True
+
     # Anti-abuse rate limiting on the open, no-account endpoints (per client IP,
     # fixed 1-hour window). In-memory, single-instance; a no-op when disabled.
     # Set the limit to 0 to disable an individual bucket.

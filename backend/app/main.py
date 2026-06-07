@@ -6,9 +6,9 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select, text
 
@@ -144,6 +144,7 @@ async def lifespan(app: FastAPI):
     print(f"  Public URL:   {settings.public_base_url}")
     print(f"  Email:        {'configured' if settings.gmail_app_password else 'disabled (links only)'}")
     print(f"  Reminders:    {'on' if reminder_service.should_run() else 'off'}")
+    print(f"  Quick create: {'on' if settings.quick_create_enabled else 'off'}")
     print(f"  Build:        {BUILD_VERSION}")
     print("=" * 56)
 
@@ -303,9 +304,17 @@ def manifest():
     return FileResponse(FRONTEND_DIR / "manifest.webmanifest", media_type="application/manifest+json")
 
 
+@app.get("/api/config")
+def app_config():
+    # Public feature flags the frontend reads to show/hide no-account UI.
+    return {"quick_create": settings.quick_create_enabled}
+
+
 @app.get("/quick")
 def quick_create_page():
     # No-account event creation. Posts to /api/public/events, then redirects to /m/<token>.
+    if not settings.quick_create_enabled:
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
     return _page("quick.html")
 
 

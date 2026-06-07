@@ -20,3 +20,11 @@ async def test_rate_limit_disabled_is_noop(client, monkeypatch):
     body = {"title": "Bash", "host_display_name": "Sam"}
     for _ in range(5):
         assert (await client.post("/api/public/events", json=body)).status_code == 201
+
+
+async def test_quick_create_can_be_disabled(client, monkeypatch):
+    # /api/config advertises the flag; the create endpoint refuses with 403.
+    monkeypatch.setattr(settings, "quick_create_enabled", False)
+    assert (await client.get("/api/config")).json()["quick_create"] is False
+    body = {"title": "Bash", "host_display_name": "Sam"}
+    assert (await client.post("/api/public/events", json=body)).status_code == 403

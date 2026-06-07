@@ -76,6 +76,8 @@ async def _load_managed_slim(token: str, db: AsyncSession) -> Event:
 
 @router.post("/events", response_model=QuickCreateResult, status_code=status.HTTP_201_CREATED)
 async def quick_create(body: QuickCreate, request: Request, db: AsyncSession = Depends(get_db)):
+    if not settings.quick_create_enabled:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No-account event creation is disabled on this server.")
     rate_limit.check(request, "create", settings.rate_limit_create_per_hour)
     host_email = str(body.host_email).lower().strip() if body.host_email else None
     event = Event(
