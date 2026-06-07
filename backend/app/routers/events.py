@@ -16,6 +16,8 @@ from app.schemas import (
     AiImageRequest,
     BroadcastRequest,
     BroadcastResult,
+    CancelRequest,
+    CancelResult,
     CohostOut,
     EventCreate,
     EventDetail,
@@ -244,6 +246,30 @@ async def set_questions(event_id: int, body: QuestionsUpdate, user: User = Depen
 @router.post("/{event_id}/broadcast", response_model=BroadcastResult)
 async def broadcast(event_id: int, body: BroadcastRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     return await event_service.send_broadcast(await _load_event(event_id, user, db), body)
+
+
+@router.post("/{event_id}/cancel", response_model=CancelResult)
+async def cancel_event(event_id: int, body: CancelRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    # A management action (reversible), so co-hosts may cancel — like broadcast,
+    # and unlike the owner-only delete.
+    event = await _load_event(event_id, user, db)
+    return await event_service.cancel_event(event, body.message, body.notify, db)
+
+
+@router.post("/{event_id}/reinstate", response_model=EventOut)
+async def reinstate_event(event_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    event = await _load_event(event_id, user, db)
+    await event_service.reinstate_event(event, db)
+    item = EventOut.model_validate(event)
+    item.is_owner = _is_owner(event, user)
+    return item
+
+
+@router.post("/{event_id}/duplicate", response_model=EventOut, status_code=status.HTTP_201_CREATED)
+async def duplicate_event(event_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    event = await _load_event(event_id, user, db)
+    clone = await event_service.duplicate_event(event, db, host_id=user.id, make_manage_token=False)
+    return EventOut.model_validate(clone)  # owned by the caller → is_owner defaults true
 
 
 @router.post("/{event_id}/ai/image", response_model=EventOut)

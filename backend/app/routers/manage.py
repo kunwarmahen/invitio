@@ -24,6 +24,8 @@ from app.schemas import (
     AiTextResult,
     BroadcastRequest,
     BroadcastResult,
+    CancelRequest,
+    CancelResult,
     EventDetail,
     EventOut,
     EventSummary,
@@ -236,6 +238,34 @@ async def manage_questions(token: str, body: QuestionsUpdate, db: AsyncSession =
 @router.post("/manage/{token}/broadcast", response_model=BroadcastResult)
 async def manage_broadcast(token: str, body: BroadcastRequest, db: AsyncSession = Depends(get_db)):
     return await event_service.send_broadcast(await _load_managed(token, db), body)
+
+
+@router.post("/manage/{token}/cancel", response_model=CancelResult)
+async def manage_cancel(token: str, body: CancelRequest, db: AsyncSession = Depends(get_db)):
+    event = await _load_managed(token, db)
+    return await event_service.cancel_event(event, body.message, body.notify, db)
+
+
+@router.post("/manage/{token}/reinstate", response_model=EventOut)
+async def manage_reinstate(token: str, db: AsyncSession = Depends(get_db)):
+    event = await _load_managed(token, db)
+    await event_service.reinstate_event(event, db)
+    return EventOut.model_validate(event)
+
+
+@router.post("/manage/{token}/duplicate", response_model=QuickCreateResult, status_code=status.HTTP_201_CREATED)
+async def manage_duplicate(token: str, db: AsyncSession = Depends(get_db)):
+    event = await _load_managed(token, db)
+    clone = await event_service.duplicate_event(event, db, host_id=None, make_manage_token=True)
+    manage_url = f"{settings.public_base_url}/m/{clone.manage_token}"
+    share_url = f"{settings.public_base_url}/e/{clone.public_token}"
+    return QuickCreateResult(
+        event=EventOut.model_validate(clone),
+        manage_token=clone.manage_token,
+        manage_url=manage_url,
+        share_url=share_url,
+        emailed=False,
+    )
 
 
 @router.post("/manage/{token}/ai/text", response_model=AiTextResult)

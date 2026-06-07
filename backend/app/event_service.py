@@ -4,6 +4,7 @@
 summary math in one place."""
 import datetime
 import os
+import shutil
 import uuid
 
 from fastapi import HTTPException, UploadFile
@@ -32,6 +33,7 @@ from app.schemas import (
     AnswerIn,
     BroadcastRequest,
     BroadcastResult,
+    CancelResult,
     CohostOut,
     ComingOut,
     EventSummary,
@@ -42,6 +44,13 @@ from app.schemas import (
     RsvpOut,
     ViewLog,
 )
+
+
+def _naive_utcnow() -> datetime.datetime:
+    # All DateTime columns are naive-UTC (see models._utcnow); strip tzinfo so
+    # asyncpg accepts the value.
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
 
 def apply_update(event: Event, body: EventUpdate) -> None:
     for field, value in body.model_dump(exclude_unset=True).items():
@@ -180,6 +189,82 @@ async def generate_event_image(event: Event, extra_prompt: str, db: AsyncSession
     ctx = {"title": event.title, "location": event.location, "theme": event.theme}
     data = await ai_service.generate_image_png(ai_service.image_prompt(ctx, extra_prompt))
     await _add_image(event, data, db, make_cover=True)
+
+
+def _copy_upload(path: str | None) -> str | None:
+    """Copy an existing uploads file to a fresh name so a clone owns its own image
+    files (deleting the original event won't take the copy's images with it).
+    Returns the new public path, or None if there's nothing to copy."""
+    if not path:
+        return None
+    src = os.path.join(settings.upload_dir, os.path.basename(path))
+    if not os.path.exists(src):
+        return None
+    os.makedirs(settings.upload_dir, exist_ok=True)
+    fname = f"{uuid.uuid4().hex}{os.path.splitext(src)[1]}"
+    try:
+        shutil.copyfile(src, os.path.join(settings.upload_dir, fname))
+    except OSError:
+        return None
+    return f"/uploads/{fname}"
+
+
+async def duplicate_event(event: Event, db: AsyncSession, *, host_id: int | None, make_manage_token: bool) -> Event:
+    """Clone an event into a fresh draft the host can edit for the next occasion.
+    Copies the creative work — details, theme, image settings, the photo gallery
+    (as new files), and the custom questions — but NOT guests, RSVPs, wall posts,
+    views, or cancelled state. The clone gets brand-new tokens and a cleared date
+    so the host re-picks one. `event` must be loaded with `images`/`questions`."""
+    clone = Event(
+        host_id=host_id,
+        title=f"{event.title} (copy)",
+        description=event.description,
+        location=event.location,
+        event_date=None,  # cleared — the host re-picks a date for the new occasion
+        event_end=None,
+        rsvp_deadline=None,
+        timezone=event.timezone,
+        host_display_name=event.host_display_name,
+        host_email=event.host_email,
+        image_fit=event.image_fit,
+        image_focal_x=event.image_focal_x,
+        image_focal_y=event.image_focal_y,
+        theme=event.theme,
+        allow_plus_ones=event.allow_plus_ones,
+        wall_enabled=event.wall_enabled,
+        guestlist_public=event.guestlist_public,
+        public_token=new_token(),
+        manage_token=new_token(24) if make_manage_token else None,
+    )
+    db.add(clone)
+    await db.flush()  # assign clone.id for the child rows below
+
+    new_images: list[EventImage] = []
+    for img in sorted(event.images, key=lambda i: i.position):
+        new_path = _copy_upload(img.path)
+        if new_path is None:
+            continue
+        ni = EventImage(
+            event_id=clone.id, path=new_path, thumb_path=_copy_upload(img.thumb_path),
+            position=img.position, is_cover=img.is_cover,
+        )
+        db.add(ni)
+        new_images.append(ni)
+    # Mirror the cover into the denormalized fields directly (clone.images isn't
+    # loaded yet, so _sync_cover can't walk the relationship).
+    cover = next((i for i in new_images if i.is_cover), new_images[0] if new_images else None)
+    clone.image_path = cover.path if cover else None
+    clone.image_thumb_path = cover.thumb_path if cover else None
+
+    for q in sorted(event.questions, key=lambda q: q.position):
+        db.add(EventQuestion(
+            event_id=clone.id, prompt=q.prompt, qtype=q.qtype,
+            options=list(q.options or []), required=q.required, position=q.position,
+        ))
+
+    await db.commit()
+    await db.refresh(clone)
+    return clone
 
 
 async def delete_event(event: Event, db: AsyncSession) -> None:
@@ -520,6 +605,33 @@ async def send_broadcast(event: Event, body: BroadcastRequest) -> BroadcastResul
             if settings.debug:
                 print(f"[BROADCAST] to {email} failed: {exc}")
     return BroadcastResult(sent=sent, recipients=len(recipients), email_enabled=True)
+
+
+# ── Cancel / reinstate ───────────────────────────────────────────────────────
+async def cancel_event(event: Event, message: str, notify: bool, db: AsyncSession) -> CancelResult:
+    """Soft-cancel the event (reversible) and stamp the host's note. When `notify`
+    is set, also email all guests the cancellation via the broadcast sender."""
+    event.cancelled_at = _naive_utcnow()
+    event.cancellation_message = (message or "").strip()
+    await db.commit()
+
+    notified = None
+    if notify:
+        note = event.cancellation_message or f"{event.host_display_name or 'The host'} has cancelled this event."
+        notified = await send_broadcast(event, BroadcastRequest(
+            subject=f"Cancelled: {event.title}",
+            message=note,
+            audience="all",
+        ))
+    return CancelResult(cancelled_at=event.cancelled_at, notified=notified)
+
+
+async def reinstate_event(event: Event, db: AsyncSession) -> None:
+    """Reverse a cancellation: clear the stamp and note so the invite reopens and
+    the RSVP form comes back."""
+    event.cancelled_at = None
+    event.cancellation_message = ""
+    await db.commit()
 
 
 # ── Guest wall ───────────────────────────────────────────────────────────────

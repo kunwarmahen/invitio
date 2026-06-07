@@ -201,7 +201,7 @@
     return `<div class="event-card" data-eid="${e.id}">
       ${thumb}
       <div class="body">
-        <h3>${esc(e.title)}${e.is_owner ? "" : ` <span class="shared-badge">Shared</span>`}</h3>
+        <h3>${esc(e.title)}${e.cancelled_at ? ` <span class="cancel-badge">Cancelled</span>` : ""}${e.is_owner ? "" : ` <span class="shared-badge">Shared</span>`}</h3>
         <div class="meta">📅 ${esc(fmtDateShort(e.event_date, e.timezone))}${e.location ? " · 📍 " + esc(e.location) : ""}</div>
       </div>
     </div>`;
@@ -373,10 +373,15 @@
       : `<p class="g-sub" style="padding:8px 0">No guests added yet.</p>`;
 
     $("#detail-content").innerHTML = `
+      ${e.cancelled_at ? `<div class="cancel-banner">
+        <strong>⊘ This event has been cancelled.</strong>
+        ${e.cancellation_message ? `<p>${esc(e.cancellation_message)}</p>` : ""}
+        <span class="g-sub">Guests see a cancelled notice and can't RSVP. Reinstate it to reopen.</span>
+      </div>` : ""}
       <div class="detail-hero">
         ${img}
         <div class="info">
-          <h2>${esc(e.title)}</h2>
+          <h2>${esc(e.title)}${e.cancelled_at ? ` <span class="cancel-badge">Cancelled</span>` : ""}</h2>
           <div class="detail-meta">
             <span>📅 ${esc(fmtDate(e.event_date, e.timezone))}</span>
             ${e.rsvp_deadline ? `<span>⏰ RSVP by ${esc(fmtDate(e.rsvp_deadline, e.timezone))}</span>` : ""}
@@ -389,6 +394,10 @@
             <a class="btn btn-line btn-sm" href="/e/${esc(e.public_token)}" target="_blank">👁 Preview invite</a>
             <button class="btn btn-line btn-sm" id="broadcast-btn">✉️ Message guests</button>
             ${aiStatus.image ? `<button class="btn btn-line btn-sm" id="gen-img-btn">✨ Generate image</button>` : ""}
+            <button class="btn btn-line btn-sm" id="dup-btn">⧉ Duplicate</button>
+            ${e.cancelled_at
+              ? `<button class="btn btn-line btn-sm" id="reinstate-btn">↩︎ Reinstate</button>`
+              : `<button class="btn btn-line btn-sm" id="cancel-btn">⊘ Cancel event</button>`}
             ${e.is_owner ? `<button class="btn btn-danger btn-sm" id="del-btn">🗑 Delete</button>` : ""}
           </div>
           ${e.is_owner ? "" : `<p class="g-sub" style="margin-top:8px">🔗 Shared with you as a co-host.</p>`}
@@ -472,6 +481,9 @@
     // wire up
     $("#edit-btn").onclick = () => openEventModal(e);
     const delBtn = $("#del-btn"); if (delBtn) delBtn.onclick = () => confirmDelete(e);
+    $("#dup-btn").onclick = () => duplicateEvent(e);
+    const cancelBtn = $("#cancel-btn"); if (cancelBtn) cancelBtn.onclick = () => confirmCancel(e);
+    const reinstateBtn = $("#reinstate-btn"); if (reinstateBtn) reinstateBtn.onclick = () => reinstateEvent(e);
     $("#img-btn").onclick = () => triggerUpload(e.id);
     wireGallery(e);
     $("#add-invites-btn").onclick = () => addInvites(e.id);
@@ -758,6 +770,49 @@
       try { await api(`/events/${e.id}`, { method: "DELETE" }); closeModal(); toast("Event deleted"); showList(); }
       catch (err) { toast(err.message, true); }
     };
+  }
+
+  // ── cancel / reinstate / duplicate ──
+  function confirmCancel(e) {
+    mountModal(`
+      <h3>Cancel "${esc(e.title)}"?</h3>
+      <p class="g-sub" style="margin-bottom:14px">The event stays here and keeps its guest list and responses, but guests see a “cancelled” notice and can no longer RSVP. You can reinstate it anytime.</p>
+      <div class="field"><label>Message to guests (optional)</label>
+        <textarea id="cancel-msg" placeholder="Add a note explaining the cancellation…" style="min-height:90px">${esc(e.cancellation_message || "")}</textarea></div>
+      <label style="display:flex;gap:8px;align-items:center;cursor:pointer">
+        <input type="checkbox" id="cancel-notify" style="width:auto"> Also email all guests now</label>
+      <div class="modal-foot">
+        <button class="btn btn-line" data-close>Keep event</button>
+        <button class="btn btn-danger" id="confirm-cancel">Cancel event</button>
+      </div>`);
+    $("#confirm-cancel").onclick = async () => {
+      const btn = $("#confirm-cancel"); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+      try {
+        const res = await api(`/events/${e.id}/cancel`, { method: "POST", body: {
+          message: $("#cancel-msg").value.trim(), notify: $("#cancel-notify").checked,
+        }});
+        closeModal();
+        if (res.notified && !res.notified.email_enabled)
+          toast("Event cancelled — email isn't configured, so guests weren't notified", true);
+        else if (res.notified)
+          toast(`Event cancelled — notified ${res.notified.sent} of ${res.notified.recipients} guest(s)`);
+        else toast("Event cancelled");
+        openEvent(e.id);
+      } catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = "Cancel event"; }
+    };
+  }
+
+  async function reinstateEvent(e) {
+    try { await api(`/events/${e.id}/reinstate`, { method: "POST" }); toast("Event reinstated"); openEvent(e.id); }
+    catch (err) { toast(err.message, true); }
+  }
+
+  async function duplicateEvent(e) {
+    try {
+      const clone = await api(`/events/${e.id}/duplicate`, { method: "POST" });
+      toast("Duplicated — pick a date for your copy");
+      openEvent(clone.id);
+    } catch (err) { toast(err.message, true); }
   }
 
   // ── photo gallery ──

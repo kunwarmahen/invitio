@@ -147,6 +147,36 @@ textarea { resize: vertical; min-height: 84px; }
     border-radius: 999px; background: var(--accent-soft, #f3effe); color: var(--accent, #7c3aed);
 }
 
+/* ── cancelled event ── */
+.cancel-badge {
+    font-size: 11px; font-weight: 700; vertical-align: middle; padding: 2px 8px;
+    border-radius: 999px; text-transform: uppercase; letter-spacing: 0.04em;
+    background: color-mix(in srgb, var(--no) 14%, var(--surface)); color: var(--no);
+}
+.cancel-banner {
+    margin: 0 0 18px; padding: 14px 16px; border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--no) 35%, transparent);
+    background: color-mix(in srgb, var(--no) 9%, var(--surface)); color: var(--ink);
+}
+.cancel-banner strong { color: var(--no); display: block; font-size: 15px; }
+.cancel-banner p { margin: 6px 0 4px; white-space: pre-wrap; }
+.cancel-banner .g-sub { display: block; margin-top: 4px; }
+/* on the public invite the banner sits inside the card body, centered + compact */
+.invite-body .cancel-banner { text-align: center; }
+.invite-body .cancel-banner strong {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;
+}
+.cancelled-notice {
+    margin: 18px 0 4px; padding: 26px 18px; text-align: center;
+    border-radius: 16px; border: 1px dashed color-mix(in srgb, var(--no) 40%, transparent);
+    background: color-mix(in srgb, var(--no) 7%, var(--surface));
+}
+.cancelled-notice .big { font-size: 40px; line-height: 1; color: var(--no); }
+.cancelled-notice h3 { margin: 10px 0 6px; }
+.cancelled-notice .cancel-note { margin: 0; white-space: pre-wrap; color: var(--ink); }
+.invite-card.is-cancelled .hero-img,
+.invite-card.is-cancelled .invite-hero { filter: grayscale(0.55); }
+
 /* ── auth screen ── */
 .auth-wrap {
     min-height: 100dvh; display: grid; place-items: center; padding: 24px;

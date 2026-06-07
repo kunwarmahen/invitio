@@ -91,6 +91,13 @@ class Event(Base):
     # loop emails each event at most once.
     reminder_sent_at: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
 
+    # Soft, reversible cancellation. cancelled_at is the stamp (non-null ⇒ the
+    # event is called off); cancellation_message is the host's note shown to
+    # guests who come back to the invite. Reinstating clears both. Distinct from
+    # deleting the event, which destroys it and all its responses.
+    cancelled_at: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
+    cancellation_message: Mapped[str] = mapped_column(Text, default="")
+
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=_utcnow)
 
     host: Mapped["User"] = relationship(back_populates="events")

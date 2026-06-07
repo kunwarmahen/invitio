@@ -99,6 +99,8 @@ def _public_event(event: Event, invite: Invite | None, existing: Rsvp | None) ->
         theme=event.theme,
         allow_plus_ones=event.allow_plus_ones,
         public_token=event.public_token,
+        cancelled_at=event.cancelled_at,
+        cancellation_message=event.cancellation_message,
         images=[EventImageOut.model_validate(i) for i in event.images],
         questions=[QuestionOut.model_validate(q) for q in event.questions],
         wall_enabled=event.wall_enabled,
@@ -143,6 +145,12 @@ async def submit_rsvp(
 ):
     rate_limit.check(request, "rsvp", settings.rate_limit_rsvp_per_hour)
     event, invite = await _resolve_token(token, db)
+
+    if event.cancelled_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This event has been cancelled, so RSVPs are closed.",
+        )
 
     party_size = body.party_size if (event.allow_plus_ones and body.status == "yes") else 1
     email = (str(body.guest_email).lower().strip() if body.guest_email else "")

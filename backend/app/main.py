@@ -66,6 +66,8 @@ async def lifespan(app: FastAPI):
         ("image_focal_x", "FLOAT NOT NULL DEFAULT 50"),
         ("image_focal_y", "FLOAT NOT NULL DEFAULT 50"),
         ("image_thumb_path", "VARCHAR"),
+        ("cancelled_at", "TIMESTAMP"),
+        ("cancellation_message", "TEXT NOT NULL DEFAULT ''"),
     ]
     for col, decl in event_column_migrations:
         try:

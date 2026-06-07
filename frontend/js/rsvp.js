@@ -413,17 +413,30 @@
     finally { btn.disabled = false; btn.textContent = "Post to the wall"; }
   }
 
+  // Notice shown in place of the RSVP form once the host has cancelled the event.
+  function cancelledNoticeHTML(e) {
+    return `<div class="cancelled-notice">
+      <div class="big">⊘</div>
+      <h3>This event has been cancelled</h3>
+      ${e.cancellation_message
+        ? `<p class="cancel-note">${esc(e.cancellation_message)}</p>`
+        : `<p class="g-sub">The host has called off this event.</p>`}
+    </div>`;
+  }
+
   function render() {
     const e = event;
     const hero = heroHTML(e);
+    const cancelled = !!e.cancelled_at;
 
     const existing = e.existing_rsvp;
     const plusOne = e.allow_plus_ones;
 
     $("#rsvp-root").innerHTML = `
-      <div class="invite-card">
+      <div class="invite-card${cancelled ? " is-cancelled" : ""}">
         ${hero}
         <div class="invite-body">
+          ${cancelled ? `<div class="cancel-banner"><strong>⊘ Cancelled</strong></div>` : ""}
           <div class="invite-kicker">${esc(e.host_display_name || "You")} invites you to</div>
           <h1 class="invite-title">${esc(e.title)}</h1>
 
@@ -434,6 +447,7 @@
           ${e.description ? `<p class="invite-desc">${esc(e.description)}</p>` : ""}
           ${calendarHTML()}
 
+          ${cancelled ? cancelledNoticeHTML(e) : `
           <div class="rsvp-form" id="form-area">
             <h3 style="font-size:20px;margin-bottom:14px">Will you be there?</h3>
             ${deadlineNoteHTML(e)}
@@ -453,36 +467,39 @@
               <textarea id="r-msg" placeholder="Can't wait! / Running late / dietary notes…">${esc(existing ? existing.message : "")}</textarea></div>
             <button class="btn btn-primary" id="rsvp-submit" style="width:100%;font-size:16px;padding:15px">
               ${existing ? "Update my RSVP" : "Send RSVP"}</button>
-          </div>
+          </div>`}
           ${galleryStripHTML(e)}
           ${comingHTML(e)}
-          ${inviteFriendHTML(e)}
-          ${wallHTML(e)}
+          ${cancelled ? "" : inviteFriendHTML(e)}
+          ${cancelled ? "" : wallHTML(e)}
         </div>
       </div>`;
 
-    // status buttons
-    const pick = $("#status-pick");
-    pick.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
-      chosenStatus = b.dataset.on;
-      pick.querySelectorAll("button").forEach((x) => x.classList.remove("sel"));
-      b.classList.add("sel");
-      $("#party-field").style.display = (plusOne && chosenStatus === "yes") ? "block" : "none";
-      // Host questions only matter for attendees — hidden for a "no".
-      const qa = $("#questions-area");
-      if (qa) qa.style.display = (chosenStatus === "no") ? "none" : "block";
-    }));
+    // Cancelled events show the notice instead of the form — skip all the form
+    // wiring (the elements don't exist), but keep the gallery/calendar handlers.
+    if (!cancelled) {
+      const pick = $("#status-pick");
+      pick.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+        chosenStatus = b.dataset.on;
+        pick.querySelectorAll("button").forEach((x) => x.classList.remove("sel"));
+        b.classList.add("sel");
+        $("#party-field").style.display = (plusOne && chosenStatus === "yes") ? "block" : "none";
+        // Host questions only matter for attendees — hidden for a "no".
+        const qa = $("#questions-area");
+        if (qa) qa.style.display = (chosenStatus === "no") ? "none" : "block";
+      }));
 
-    // preselect existing response
-    if (existing) {
-      const btn = pick.querySelector(`[data-on="${existing.status}"]`);
-      if (btn) btn.click();
+      // preselect existing response
+      if (existing) {
+        const btn = pick.querySelector(`[data-on="${existing.status}"]`);
+        if (btn) btn.click();
+      }
+
+      $("#rsvp-submit").addEventListener("click", submit);
+      const wallBtn = $("#wall-post");
+      if (wallBtn) wallBtn.addEventListener("click", submitWallPost);
+      wireInviteFriend();
     }
-
-    $("#rsvp-submit").addEventListener("click", submit);
-    const wallBtn = $("#wall-post");
-    if (wallBtn) wallBtn.addEventListener("click", submitWallPost);
-    wireInviteFriend();
     wireCalendar();
     const heroEl = $("#hero");
     if (heroEl && event.image_path) heroEl.addEventListener("click", () => openLightbox(0));

@@ -150,10 +150,15 @@
       : `<p class="g-sub" style="padding:8px 0">No guests added yet.</p>`;
 
     $("#manage-content").innerHTML = `
+      ${e.cancelled_at ? `<div class="cancel-banner">
+        <strong>⊘ This event has been cancelled.</strong>
+        ${e.cancellation_message ? `<p>${esc(e.cancellation_message)}</p>` : ""}
+        <span class="g-sub">Guests see a cancelled notice and can't RSVP. Reinstate it to reopen.</span>
+      </div>` : ""}
       <div class="detail-hero">
         ${img}
         <div class="info">
-          <h2>${esc(e.title)}</h2>
+          <h2>${esc(e.title)}${e.cancelled_at ? ` <span class="cancel-badge">Cancelled</span>` : ""}</h2>
           <div class="detail-meta">
             <span>📅 ${esc(fmtDate(e.event_date, e.timezone))}</span>
             ${e.rsvp_deadline ? `<span>⏰ RSVP by ${esc(fmtDate(e.rsvp_deadline, e.timezone))}</span>` : ""}
@@ -166,6 +171,10 @@
             <a class="btn btn-line btn-sm" href="/e/${esc(e.public_token)}" target="_blank">👁 Preview invite</a>
             <button class="btn btn-line btn-sm" id="broadcast-btn">✉️ Message guests</button>
             ${aiStatus.image ? `<button class="btn btn-line btn-sm" id="gen-img-btn">✨ Generate image</button>` : ""}
+            <button class="btn btn-line btn-sm" id="dup-btn">⧉ Duplicate</button>
+            ${e.cancelled_at
+              ? `<button class="btn btn-line btn-sm" id="reinstate-btn">↩︎ Reinstate</button>`
+              : `<button class="btn btn-line btn-sm" id="cancel-btn">⊘ Cancel event</button>`}
             <button class="btn btn-danger btn-sm" id="del-btn">🗑 Delete</button>
           </div>
         </div>
@@ -227,6 +236,9 @@
 
     $("#edit-btn").onclick = () => openEditModal(e);
     $("#del-btn").onclick = () => confirmDelete(e);
+    $("#dup-btn").onclick = () => duplicateEvent(e);
+    const cancelBtn = $("#cancel-btn"); if (cancelBtn) cancelBtn.onclick = () => confirmCancel(e);
+    const reinstateBtn = $("#reinstate-btn"); if (reinstateBtn) reinstateBtn.onclick = () => reinstateEvent();
     $("#img-btn").onclick = () => $("#hidden-file").click();
     wireGallery(e);
     $("#add-invites-btn").onclick = () => addInvites();
@@ -549,6 +561,51 @@
           <p><a href="/quick">Create another</a></p></div>`;
       } catch (err) { toast(err.message, true); }
     };
+  }
+
+  // ── cancel / reinstate / duplicate ──
+  function confirmCancel(e) {
+    mountModal(`
+      <h3>Cancel "${esc(e.title)}"?</h3>
+      <p class="g-sub" style="margin-bottom:14px">The event stays here and keeps its guest list and responses, but guests see a “cancelled” notice and can no longer RSVP. You can reinstate it anytime.</p>
+      <div class="field"><label>Message to guests (optional)</label>
+        <textarea id="cancel-msg" placeholder="Add a note explaining the cancellation…" style="min-height:90px">${esc(e.cancellation_message || "")}</textarea></div>
+      <label style="display:flex;gap:8px;align-items:center;cursor:pointer">
+        <input type="checkbox" id="cancel-notify" style="width:auto"> Also email all guests now</label>
+      <div class="modal-foot">
+        <button class="btn btn-line" data-close>Keep event</button>
+        <button class="btn btn-danger" id="confirm-cancel">Cancel event</button>
+      </div>`);
+    $("#confirm-cancel").onclick = async () => {
+      const btn = $("#confirm-cancel"); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+      try {
+        const res = await api("/cancel", { method: "POST", body: {
+          message: $("#cancel-msg").value.trim(), notify: $("#cancel-notify").checked,
+        }});
+        closeModal();
+        if (res.notified && !res.notified.email_enabled)
+          toast("Event cancelled — email isn't configured, so guests weren't notified", true);
+        else if (res.notified)
+          toast(`Event cancelled — notified ${res.notified.sent} of ${res.notified.recipients} guest(s)`);
+        else toast("Event cancelled");
+        load();
+      } catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = "Cancel event"; }
+    };
+  }
+
+  async function reinstateEvent() {
+    try { await api("/reinstate", { method: "POST" }); toast("Event reinstated"); load(); }
+    catch (err) { toast(err.message, true); }
+  }
+
+  async function duplicateEvent(e) {
+    try {
+      const res = await api("/duplicate", { method: "POST" });
+      toast("Duplicated — opening your copy…");
+      // The clone has its own manage token, so jump to its manage page (relative
+      // to this origin, so it works regardless of the server's public base URL).
+      setTimeout(() => { location.href = `/m/${res.manage_token}?created`; }, 600);
+    } catch (err) { toast(err.message, true); }
   }
 
   // ── photo gallery ──

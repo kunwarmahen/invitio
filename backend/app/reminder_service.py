@@ -115,6 +115,7 @@ async def run_reminders_once() -> int:
                 select(Event)
                 .where(
                     Event.reminder_sent_at.is_(None),
+                    Event.cancelled_at.is_(None),  # don't remind for a called-off event
                     Event.event_date.is_not(None),
                     Event.event_date >= now,
                     Event.event_date <= window_end,

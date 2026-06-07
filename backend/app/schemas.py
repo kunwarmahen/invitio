@@ -267,6 +267,10 @@ class EventOut(BaseModel):
     guestlist_public: bool
     public_token: str
     created_at: datetime.datetime
+    # Set (non-null) when the event has been cancelled; the message is the host's
+    # note. Distinct from deletion — a cancelled event keeps its responses.
+    cancelled_at: EventDateOut = None
+    cancellation_message: str = ""
     # True when the current viewer owns the event (vs. a co-host). Set per-request
     # in the router; defaults true for action-returns where the actor manages it.
     is_owner: bool = True
@@ -323,6 +327,20 @@ class BroadcastResult(BaseModel):
     sent: int
     recipients: int
     email_enabled: bool
+
+
+# ── Cancel / reinstate ───────────────────────────────────────────────────────
+class CancelRequest(BaseModel):
+    # Optional note shown to guests who return to the invite; `notify` also emails
+    # all guests the cancellation (reuses the broadcast sender).
+    message: str = Field(default="", max_length=2000)
+    notify: bool = False
+
+
+class CancelResult(BaseModel):
+    cancelled_at: EventDateOut = None
+    # Present only when `notify` was set: the broadcast send stats.
+    notified: BroadcastResult | None = None
 
 
 # ── AI generation ────────────────────────────────────────────────────────────
@@ -400,6 +418,10 @@ class PublicEventOut(BaseModel):
     theme: str
     allow_plus_ones: bool
     public_token: str
+    # When set, the invite shows a "cancelled" notice + the host's message and the
+    # RSVP form is closed (the public RSVP endpoint also rejects new responses).
+    cancelled_at: EventDateOut = None
+    cancellation_message: str = ""
     images: list[EventImageOut] = []
     questions: list[QuestionOut] = []
     # Guest wall (only populated when the respective toggle is on).

@@ -62,6 +62,13 @@ reverse proxy.
   or multi-select), optionally required; answers show on the dashboard.
 - **Message all guests** — broadcast an update or cancellation by email,
   targeted by RSVP status (everyone / yes / maybe / no / not-yet-responded).
+- **Cancel an event** — call off an event without deleting it: guests see a
+  "cancelled" notice (plus your optional message) on the invite and can no longer
+  RSVP, while you keep the guest list and all responses. Optionally email everyone
+  the cancellation, and **reinstate** it later to reopen.
+- **Duplicate an event** — clone last year's invite into a fresh draft: it copies
+  the details, theme, photos, and custom questions but starts with a clean guest
+  list, no responses, new links, and a blank date for you to set.
 - **Guest wall** — optional public well-wishes board and a "who's coming" list
   on the invite, each toggleable per event; the host can moderate posts.
 - **Co-hosts** — share full event management with another invitio account
@@ -248,6 +255,8 @@ Interactive docs at `/docs` when running. Summary:
 | GET  | `/api/auth/me` | ✓ | current user |
 | POST/GET | `/api/events` | ✓ | create / list events |
 | GET/PUT/DELETE | `/api/events/{id}` | ✓ | manage one event |
+| POST | `/api/events/{id}/cancel` · `/reinstate` | ✓ | cancel (soft) / reopen an event |
+| POST | `/api/events/{id}/duplicate` | ✓ | clone into a fresh draft |
 | POST | `/api/events/{id}/image` | ✓ | upload hero image (sets cover) |
 | POST/DELETE | `/api/events/{id}/images[/{img}]` | ✓ | add photos / delete one |
 | POST/PUT | `/api/events/{id}/images/{img}/cover` · `/images/order` | ✓ | set cover / reorder |
