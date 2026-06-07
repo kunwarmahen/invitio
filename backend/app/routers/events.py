@@ -14,6 +14,7 @@ from app.schemas import (
     AddInvitesRequest,
     AddInvitesResult,
     AiImageRequest,
+    BroadcastOut,
     BroadcastRequest,
     BroadcastResult,
     CancelRequest,
@@ -245,7 +246,13 @@ async def set_questions(event_id: int, body: QuestionsUpdate, user: User = Depen
 
 @router.post("/{event_id}/broadcast", response_model=BroadcastResult)
 async def broadcast(event_id: int, body: BroadcastRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    return await event_service.send_broadcast(await _load_event(event_id, user, db), body)
+    return await event_service.send_broadcast(await _load_event(event_id, user, db), body, db)
+
+
+@router.get("/{event_id}/broadcasts", response_model=list[BroadcastOut])
+async def list_broadcasts(event_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    event = await _load_event_slim(event_id, user, db)
+    return await event_service.fetch_broadcasts(event.id, db)
 
 
 @router.post("/{event_id}/cancel", response_model=CancelResult)

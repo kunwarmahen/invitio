@@ -124,6 +124,11 @@ class Event(Base):
     views: Mapped[list["InviteView"]] = relationship(
         back_populates="event", cascade="all, delete-orphan"
     )
+    broadcasts: Mapped[list["Broadcast"]] = relationship(
+        back_populates="event",
+        cascade="all, delete-orphan",
+        order_by="Broadcast.created_at.desc()",
+    )
 
 
 class Invite(Base):
@@ -266,6 +271,25 @@ class WallPost(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=_utcnow)
 
     event: Mapped["Event"] = relationship(back_populates="wall_posts")
+
+
+class Broadcast(Base):
+    """A record of one 'message all guests' broadcast the host sent, kept so the
+    dashboard can show the history of what went out, to whom, and how many landed.
+    A new table, so create_all handles it (no manual ALTER)."""
+    __tablename__ = "broadcasts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), index=True, nullable=False)
+    subject: Mapped[str] = mapped_column(String, nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    audience: Mapped[str] = mapped_column(String, default="all")  # all|yes|maybe|no|pending
+    # Recipients targeted vs. emails that actually went out (best-effort send).
+    recipients: Mapped[int] = mapped_column(Integer, default=0)
+    sent: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=_utcnow)
+
+    event: Mapped["Event"] = relationship(back_populates="broadcasts")
 
 
 class EventCohost(Base):

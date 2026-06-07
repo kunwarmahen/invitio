@@ -177,6 +177,15 @@ textarea { resize: vertical; min-height: 84px; }
 .invite-card.is-cancelled .hero-img,
 .invite-card.is-cancelled .invite-hero { filter: grayscale(0.55); }
 
+/* ── sent-messages history ── */
+.broadcast-item { padding: 10px 0; border-bottom: 1px solid var(--border, #e6e6ef); }
+.broadcast-item:last-child { border-bottom: none; }
+.broadcast-msg {
+    margin-top: 6px; padding: 8px 10px; border-radius: 10px; font-size: 13px;
+    white-space: pre-wrap; color: var(--ink);
+    background: var(--accent-soft, #f3effe);
+}
+
 /* ── auth screen ── */
 .auth-wrap {
     min-height: 100dvh; display: grid; place-items: center; padding: 24px;

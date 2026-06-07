@@ -426,6 +426,10 @@
             <div id="views-panel"><p class="g-sub" style="padding:8px 0"><span class="spinner"></span> Loading…</p></div>
           </div>
           <div class="panel">
+            <h4>Sent messages</h4>
+            <div id="broadcasts-panel"><p class="g-sub" style="padding:8px 0"><span class="spinner"></span> Loading…</p></div>
+          </div>
+          <div class="panel">
             <h4>Guest wall (${e.wall_posts.length})</h4>
             ${e.wall_enabled ? "" : `<p class="g-sub" style="margin-bottom:8px">The guest wall is off — enable it in Edit.</p>`}
             ${wallModerationHTML(e.wall_posts)}
@@ -505,6 +509,28 @@
     document.querySelectorAll("[data-more]").forEach((b) =>
       b.addEventListener("click", () => loadMore(e, b)));
     loadViews(e.id);
+    loadBroadcasts(e.id);
+  }
+
+  // ── Sent-messages history (broadcasts) ─────────────────────────────────────
+  const AUDIENCE_LABEL = {
+    all: "Everyone", yes: "Said yes", maybe: "Said maybe", no: "Said no", pending: "No reply yet",
+  };
+  function broadcastsHTML(items) {
+    if (!items.length)
+      return `<p class="g-sub" style="padding:8px 0">No messages sent yet. Use “Message guests” above to send an update.</p>`;
+    return items.map((b) => `<div class="broadcast-item">
+      <div class="g-name">${esc(b.subject)}</div>
+      <div class="g-sub">${esc(AUDIENCE_LABEL[b.audience] || b.audience)} · sent to ${b.sent}/${b.recipients} · ${esc(timeAgo(b.created_at))}</div>
+      <div class="broadcast-msg">${esc(b.message)}</div>
+    </div>`).join("");
+  }
+
+  async function loadBroadcasts(eventId) {
+    const el = $("#broadcasts-panel");
+    if (!el) return;
+    try { el.innerHTML = broadcastsHTML(await api(`/events/${eventId}/broadcasts`)); }
+    catch { el.innerHTML = `<p class="g-sub" style="padding:8px 0">Couldn't load sent messages.</p>`; }
   }
 
   // ── Invite-open log (who/where the invite has been viewed from) ────────────
@@ -753,7 +779,7 @@
         closeModal();
         if (!res.email_enabled) toast(`Email isn't configured — ${res.recipients} guest(s) would have been messaged`, true);
         else if (!res.recipients) toast("No guests match that audience");
-        else toast(`Sent to ${res.sent} of ${res.recipients} guest(s)`);
+        else { toast(`Sent to ${res.sent} of ${res.recipients} guest(s)`); loadBroadcasts(e.id); }
       } catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = "Send"; }
     });
   }

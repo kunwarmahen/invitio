@@ -128,6 +128,58 @@ async def test_cohost_can_cancel_but_not_delete(client, host, register):
     assert (await client.delete(f"/api/events/{ev['id']}", headers=co)).status_code == 403
 
 
+async def test_broadcast_history_is_recorded(client, host, monkeypatch):
+    _, headers = host
+    ev = await _create_event(client, headers)
+    await client.post(
+        f"/api/events/{ev['id']}/invites",
+        json={"emails": ["a@example.com", "b@example.com"], "send_email": False}, headers=headers,
+    )
+
+    # No history before any send.
+    r = await client.get(f"/api/events/{ev['id']}/broadcasts", headers=headers)
+    assert r.status_code == 200 and r.json() == []
+
+    # Pretend email is configured and every send succeeds.
+    from app import event_service
+    monkeypatch.setattr(event_service, "email_configured", lambda: True)
+    async def _ok(**kwargs):
+        return True
+    monkeypatch.setattr(event_service, "send_broadcast_email", _ok)
+
+    send = await client.post(
+        f"/api/events/{ev['id']}/broadcast",
+        json={"subject": "Parking update", "message": "Lot B is closed", "audience": "all"},
+        headers=headers,
+    )
+    assert send.status_code == 200, send.text
+    assert send.json()["sent"] == 2
+
+    # The send is now in the history.
+    hist = (await client.get(f"/api/events/{ev['id']}/broadcasts", headers=headers)).json()
+    assert len(hist) == 1
+    assert hist[0]["subject"] == "Parking update"
+    assert hist[0]["audience"] == "all"
+    assert hist[0]["recipients"] == 2
+    assert hist[0]["sent"] == 2
+
+
+async def test_broadcast_not_logged_when_email_disabled(client, host):
+    _, headers = host
+    ev = await _create_event(client, headers)
+    await client.post(
+        f"/api/events/{ev['id']}/invites",
+        json={"emails": ["a@example.com"], "send_email": False}, headers=headers,
+    )
+    # Email is unconfigured in tests → nothing actually goes out, so nothing logged.
+    send = await client.post(
+        f"/api/events/{ev['id']}/broadcast",
+        json={"subject": "Hi", "message": "Hello", "audience": "all"}, headers=headers,
+    )
+    assert send.json()["email_enabled"] is False
+    assert (await client.get(f"/api/events/{ev['id']}/broadcasts", headers=headers)).json() == []
+
+
 async def test_manage_token_cancel_and_duplicate(client):
     # Quick-create (no account) event.
     r = await client.post("/api/public/events", json={"title": "Picnic", "description": "BYO"})

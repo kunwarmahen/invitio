@@ -61,7 +61,9 @@ reverse proxy.
 - **Custom RSVP questions** — host-defined questions (free text, single-choice,
   or multi-select), optionally required; answers show on the dashboard.
 - **Message all guests** — broadcast an update or cancellation by email,
-  targeted by RSVP status (everyone / yes / maybe / no / not-yet-responded).
+  targeted by RSVP status (everyone / yes / maybe / no / not-yet-responded). Every
+  send is kept in a **"Sent messages" history** on the dashboard, showing the
+  subject, audience, how many it reached, and when.
 - **Cancel an event** — call off an event without deleting it: guests see a
   "cancelled" notice (plus your optional message) on the invite and can no longer
   RSVP, while you keep the guest list and all responses. Optionally email everyone
@@ -257,6 +259,7 @@ Interactive docs at `/docs` when running. Summary:
 | GET/PUT/DELETE | `/api/events/{id}` | ✓ | manage one event |
 | POST | `/api/events/{id}/cancel` · `/reinstate` | ✓ | cancel (soft) / reopen an event |
 | POST | `/api/events/{id}/duplicate` | ✓ | clone into a fresh draft |
+| POST/GET | `/api/events/{id}/broadcast` · `/broadcasts` | ✓ | message all guests / send history |
 | POST | `/api/events/{id}/image` | ✓ | upload hero image (sets cover) |
 | POST/DELETE | `/api/events/{id}/images[/{img}]` | ✓ | add photos / delete one |
 | POST/PUT | `/api/events/{id}/images/{img}/cover` · `/images/order` | ✓ | set cover / reorder |

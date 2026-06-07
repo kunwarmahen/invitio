@@ -17,6 +17,7 @@ from app.auth import new_token
 from app.config import settings
 from app.email_service import email_configured, send_broadcast_email, send_invite_email
 from app.models import (
+    Broadcast,
     Event,
     EventCohost,
     EventImage,
@@ -31,6 +32,7 @@ from app.models import (
 from app.schemas import (
     AddInvitesRequest,
     AnswerIn,
+    BroadcastOut,
     BroadcastRequest,
     BroadcastResult,
     CancelResult,
@@ -271,9 +273,10 @@ async def delete_event(event: Event, db: AsyncSession) -> None:
     for img in event.images:
         _remove_image(img)
     _remove_image_file(event.image_path)  # legacy events may predate the gallery
-    # View rows aren't eager-loaded here, so clear them explicitly before the
-    # event goes (same reason replace_questions deletes RsvpAnswer directly).
+    # View + broadcast rows aren't eager-loaded here, so clear them explicitly
+    # before the event goes (same reason replace_questions deletes RsvpAnswer).
     await db.execute(delete(InviteView).where(InviteView.event_id == event.id))
+    await db.execute(delete(Broadcast).where(Broadcast.event_id == event.id))
     await db.delete(event)
     await db.commit()
 
@@ -581,8 +584,10 @@ def collect_broadcast_recipients(event: Event, audience: str) -> list[tuple[str,
     return list(recipients.items())
 
 
-async def send_broadcast(event: Event, body: BroadcastRequest) -> BroadcastResult:
-    """Email the host's message to the chosen audience, best-effort per recipient."""
+async def send_broadcast(event: Event, body: BroadcastRequest, db: AsyncSession) -> BroadcastResult:
+    """Email the host's message to the chosen audience, best-effort per recipient,
+    and record the send so the dashboard can show a history. Nothing is logged
+    when email isn't configured (no message actually went out)."""
     recipients = collect_broadcast_recipients(event, body.audience)
     if not email_configured():
         return BroadcastResult(sent=0, recipients=len(recipients), email_enabled=False)
@@ -604,7 +609,27 @@ async def send_broadcast(event: Event, body: BroadcastRequest) -> BroadcastResul
         except Exception as exc:
             if settings.debug:
                 print(f"[BROADCAST] to {email} failed: {exc}")
+
+    if recipients:
+        db.add(Broadcast(
+            event_id=event.id, subject=body.subject, message=body.message,
+            audience=body.audience, recipients=len(recipients), sent=sent,
+        ))
+        await db.commit()
     return BroadcastResult(sent=sent, recipients=len(recipients), email_enabled=True)
+
+
+async def fetch_broadcasts(event_id: int, db: AsyncSession, limit: int = 50) -> list[BroadcastOut]:
+    """Past broadcasts for an event, newest first, for the dashboard history."""
+    rows = (
+        await db.execute(
+            select(Broadcast)
+            .where(Broadcast.event_id == event_id)
+            .order_by(Broadcast.created_at.desc(), Broadcast.id.desc())
+            .limit(limit)
+        )
+    ).scalars().all()
+    return [BroadcastOut.model_validate(b) for b in rows]
 
 
 # ── Cancel / reinstate ───────────────────────────────────────────────────────
@@ -622,7 +647,7 @@ async def cancel_event(event: Event, message: str, notify: bool, db: AsyncSessio
             subject=f"Cancelled: {event.title}",
             message=note,
             audience="all",
-        ))
+        ), db)
     return CancelResult(cancelled_at=event.cancelled_at, notified=notified)
 
 

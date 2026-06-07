@@ -329,6 +329,20 @@ class BroadcastResult(BaseModel):
     email_enabled: bool
 
 
+class BroadcastOut(BaseModel):
+    """A past 'message all guests' send, for the dashboard history."""
+    id: int
+    subject: str
+    message: str
+    audience: str
+    recipients: int
+    sent: int
+    created_at: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
+
 # ── Cancel / reinstate ───────────────────────────────────────────────────────
 class CancelRequest(BaseModel):
     # Optional note shown to guests who return to the invite; `notify` also emails

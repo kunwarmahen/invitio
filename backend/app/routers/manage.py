@@ -22,6 +22,7 @@ from app.schemas import (
     AiImageRequest,
     AiTextRequest,
     AiTextResult,
+    BroadcastOut,
     BroadcastRequest,
     BroadcastResult,
     CancelRequest,
@@ -237,7 +238,13 @@ async def manage_questions(token: str, body: QuestionsUpdate, db: AsyncSession =
 
 @router.post("/manage/{token}/broadcast", response_model=BroadcastResult)
 async def manage_broadcast(token: str, body: BroadcastRequest, db: AsyncSession = Depends(get_db)):
-    return await event_service.send_broadcast(await _load_managed(token, db), body)
+    return await event_service.send_broadcast(await _load_managed(token, db), body, db)
+
+
+@router.get("/manage/{token}/broadcasts", response_model=list[BroadcastOut])
+async def manage_list_broadcasts(token: str, db: AsyncSession = Depends(get_db)):
+    event = await _load_managed_slim(token, db)
+    return await event_service.fetch_broadcasts(event.id, db)
 
 
 @router.post("/manage/{token}/cancel", response_model=CancelResult)
